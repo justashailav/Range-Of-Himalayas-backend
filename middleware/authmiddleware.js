@@ -27,54 +27,81 @@
 // };
 
 
-import jwt from "jsonwebtoken";
-import { User } from "../models/userModel.js";
-
 export const isAuthenticated = async (req, res, next) => {
-  const { token } = req.cookies;
-  if (!token) {
-    return res.status(401).json({
-      success: false,
-      message: "User not authenticated",
-    });
-  }
-
   try {
-    let decoded;
+    const { token } = req.cookies;
 
-    // Try verifying with user secret first
-    try {
-      decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-    } catch (err) {
-      // If it fails, try admin secret
-      decoded = jwt.verify(token, process.env.JWT_SECRET_KEY_LOGIN);
+    console.log("🧠 [Auth Debug] Incoming request:", req.originalUrl);
+    console.log("🧠 [Auth Debug] Cookies received:", req.cookies);
+    console.log("🧠 [Auth Debug] Token found:", token ? "✅ Yes" : "❌ No");
+
+    if (!token) {
+      console.log("🚫 [Auth Debug] No token found in cookies");
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
     }
 
+    let decoded;
+
+    try {
+      // Try verifying with user key first
+      console.log("🧩 [Auth Debug] Verifying with JWT_SECRET_KEY...");
+      decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
+    } catch (err) {
+      // If fails, it might be an admin token
+      console.log("⚠️ [Auth Debug] Failed with JWT_SECRET_KEY, trying JWT_SECRET_KEY_LOGIN...");
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET_KEY_LOGIN);
+      } catch (e) {
+        console.log("❌ [Auth Debug] Both verifications failed:", e.message);
+        return res.status(401).json({
+          success: false,
+          message: "Invalid or expired token",
+        });
+      }
+    }
+
+    console.log("✅ [Auth Debug] Token decoded:", decoded);
+
+    // Handle Admin Login
     if (decoded.id === "admin-id" || decoded.role === "Admin") {
+      console.log("👑 [Auth Debug] Admin access granted");
       req.user = {
         id: "admin-id",
         role: "Admin",
         email: process.env.ADMIN_EMAIL,
       };
-    } else {
-      const user = await User.findById(decoded.id);
-      if (!user) {
-        return res.status(401).json({
-          success: false,
-          message: "User not found",
-        });
-      }
-      req.user = user;
+      return next();
     }
+
+    // Handle Regular User Login
+    console.log("🔍 [Auth Debug] Fetching user from DB...");
+    const user = await User.findById(decoded.id);
+
+    if (!user) {
+      console.log("🚫 [Auth Debug] No user found for ID:", decoded.id);
+      return res.status(401).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    console.log("✅ [Auth Debug] Authenticated user:", user.email);
+    req.user = user;
 
     next();
   } catch (error) {
+    console.log("❌ [Auth Debug] Authentication failed:", error.message);
     return res.status(401).json({
       success: false,
-      message: "Invalid or expired token",
+      message: "Authentication error",
+      error: error.message,
     });
   }
 };
+
 
 
 export const isAuthorized = (...roles) => {

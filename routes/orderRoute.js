@@ -18,8 +18,6 @@ import upload from "../utils/multer.js";
 import { isAuthenticated } from "../middleware/authmiddleware.js";
 
 const router = express.Router();
-
-// ✅ Keep non-dynamic routes first
 router.get("/recent", getRecentOrders);
 router.post("/create", isAuthenticated, createOrder);
 router.post("/capture-payment", capturePayment);
