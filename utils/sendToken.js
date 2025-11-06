@@ -1,24 +1,22 @@
 export const sendToken = (user, statusCode, message, res) => {
-  // Generate JWT token from user model method
   const token = user.generateToken();
 
-  // Calculate cookie expiration date
-  const cookieExpireDays = process.env.COOKIE_EXPIRE || 3;
-  const options = {
-    expires: new Date(Date.now() + cookieExpireDays * 24 * 60 * 60 * 1000),
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production", // ✅ only send over HTTPS in production
-    sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax", // ✅ allows cross-site cookie (Render + Netlify)
-  };
+  // Debug logs to verify environment values
+  console.log("🧠 [sendToken] Sending cookie with token:", token.slice(0, 20) + "...");
+  console.log("🧠 [sendToken] NODE_ENV:", process.env.NODE_ENV);
 
-  // Send response
   res
     .status(statusCode)
-    .cookie("token", token, options)
+    .cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // HTTPS only in production
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // ✅ Important for localhost vs Netlify
+      maxAge: parseInt(process.env.COOKIE_EXPIRE) * 24 * 60 * 60 * 1000,
+    })
     .json({
       success: true,
-      message,
       user,
-      token, // ✅ include token explicitly
+      message,
+      token, // optional, for debugging
     });
 };

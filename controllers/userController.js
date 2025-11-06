@@ -131,43 +131,53 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 export const Login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log(email,password)
+    console.log("🧠 Login attempt:", email, password);
+
     if (!email || !password) {
       return res.status(400).json({
         success: false,
         message: "All fields required",
       });
     }
+
+    // ✅ ADMIN LOGIN
     if (email === ADMIN_EMAIL) {
       const isPasswordMatch = await bcrypt.compare(password, ADMIN_PASSWORD);
       if (!isPasswordMatch) {
         return res.status(400).json({
           success: false,
-          message: "Invalid email or password",
+          message: "Invalid admin credentials",
         });
       }
-      const token = jwt.sign({ id: "admin-id", role: "Admin" }, process.env.JWT_SECRET_KEY_LOGIN, {
-        expiresIn: process.env.JWT_EXPIRE,
-      });
 
-      res
+      // 🔑 Admin token uses same secret as users for consistency
+      const token = jwt.sign(
+        { id: "admin-id", role: "Admin" },
+        process.env.JWT_SECRET_KEY, // ✅ unified key
+        { expiresIn: process.env.JWT_EXPIRE }
+      );
+
+      return res
         .status(200)
         .cookie("token", token, {
           httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
           maxAge: process.env.COOKIE_EXPIRE * 24 * 60 * 60 * 1000,
         })
         .json({
           success: true,
           message: "Admin login successful",
+          token, // ✅ explicitly send token
           user: {
             id: "admin-id",
             email: ADMIN_EMAIL,
             role: "Admin",
           },
         });
-
-      return;
     }
+
+    // ✅ USER LOGIN
     const user = await User.findOne({ email, accountVerified: true });
     if (!user) {
       return res.status(400).json({
@@ -184,16 +194,17 @@ export const Login = async (req, res) => {
       });
     }
 
+    // ✅ Uses same JWT_SECRET_KEY internally
     sendToken(user, 200, "User login successful", res);
   } catch (error) {
-    console.error(error);
+    console.error("💥 Login error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to login",
+      error: error.message,
     });
   }
 };
-
 export const ForgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
