@@ -35,7 +35,7 @@ app.use(cookieParser());
 const corsOptions = {
   origin: [
     "http://localhost:5173",
-    "https://rangeofhimalayas.netlify.app",
+    "https://rangeofhimalaya.netlify.app",
     "https://r-rnge-of-himalayas-9ytm-99kw1v31u-justashailavs-projects.vercel.app/"
   ],
   credentials: true,
