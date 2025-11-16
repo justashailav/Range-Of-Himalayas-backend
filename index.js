@@ -32,14 +32,25 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// const corsOptions = {
+//   origin: [
+//     "http://localhost:5173",
+//     "https://rangeofhimalaya.netlify.app",
+//   ],
+//   credentials: true,
+// };
+// app.use(cors(corsOptions));
 const corsOptions = {
   origin: [
     "http://localhost:5173",
-    "https://rangeofhimalaya.netlify.app",
+    "https://rangeofhimalayas.co.in",
+    "https://www.rangeofhimalayas.co.in",
   ],
   credentials: true,
 };
+
 app.use(cors(corsOptions));
+
 
 // ---------- Static Files ----------
 const __filename = fileURLToPath(import.meta.url);
@@ -69,11 +80,23 @@ app.use("/api/v1/blog", blogRoute);
 // ---------- Server & Socket.io ----------
 const server = http.createServer(app);
 
+// const io = new Server(server, {
+//   cors: {
+//     origin: [
+//       "http://localhost:5173",
+//       "https://rangeofhimalaya.netlify.app",
+//     ],
+//     methods: ["GET", "POST", "PATCH"],
+//     credentials: true,
+//   },
+// });
+
 const io = new Server(server, {
   cors: {
     origin: [
       "http://localhost:5173",
-      "https://rangeofhimalaya.netlify.app",
+      "https://rangeofhimalayas.co.in",
+      "https://www.rangeofhimalayas.co.in",
     ],
     methods: ["GET", "POST", "PATCH"],
     credentials: true,
