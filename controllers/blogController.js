@@ -62,7 +62,10 @@ export const getAllBlogs = async (req, res) => {
     const formattedBlogs = blogs.map((blog) => ({
       ...blog.toObject(),
       likesCount: blog.likes?.length || 0,
-      isLiked: userId ? blog.likes.some((id) => id.equals(userId)) : false,
+      isLiked: userId
+  ? blog.likes.some((id) => id?.toString() === userId?.toString())
+  : false,
+
     }));
 
     res.status(200).json({
@@ -97,7 +100,10 @@ export const getBlogBySlug = async (req, res) => {
     const blogData = {
       ...blog.toObject(),
       likesCount: blog.likes?.length || 0,
-      isLiked: userId ? blog.likes.some((id) => id.equals(userId)) : false,
+      isLiked: userId
+  ? blog.likes.some((id) => id?.toString() === userId?.toString())
+  : false,
+
     };
 
     res.status(200).json({
