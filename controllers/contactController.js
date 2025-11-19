@@ -17,7 +17,7 @@ export const contactFormHandler = async (req, res) => {
     `;
 
     await sendEmail({
-      email: process.env.SMTP_MAIL, 
+      email: process.env.RESEND_FROM, 
       subject,
       message,
     });
