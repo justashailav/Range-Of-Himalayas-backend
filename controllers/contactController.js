@@ -17,7 +17,7 @@ export const contactFormHandler = async (req, res) => {
     `;
 
     await sendEmail({
-      email: process.env.RESEND_FROM, 
+      email: "contactrangeofhimalayas@gmail.com", 
       subject,
       message,
     });
