@@ -45,6 +45,7 @@ const corsOptions = {
     "http://localhost:5173",
     "https://rangeofhimalayas.co.in",
     "https://www.rangeofhimalayas.co.in",
+    "https://range-of-himalayas-backend.onrender.com"
   ],
   credentials: true,
 };
@@ -97,6 +98,7 @@ const io = new Server(server, {
       "http://localhost:5173",
       "https://rangeofhimalayas.co.in",
       "https://www.rangeofhimalayas.co.in",
+      "https://range-of-himalayas-backend.onrender.com"
     ],
     methods: ["GET", "POST", "PATCH"],
     credentials: true,
