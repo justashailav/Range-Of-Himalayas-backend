@@ -13,10 +13,10 @@ export const addProduct = async (req, res) => {
       badges,
       view360,
       variants,
-      customBoxPrices, 
+      customBoxPrices,
     } = req.body;
 
-    const allFiles = req.files || [];
+    const files = req.files || [];
 
     if (!title || !description) {
       return res.status(400).json({
@@ -25,116 +25,119 @@ export const addProduct = async (req, res) => {
       });
     }
 
-    if (allFiles.length === 0) {
+    if (files.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "At least one product image is required",
+        message: "At least one image is required",
       });
     }
-    const mainImage = allFiles[0];
-    const galleryImages = allFiles.slice(1);
-    let parsedVariants = variants;
-    if (typeof variants === "string") {
-      try {
-        parsedVariants = JSON.parse(variants);
-      } catch (err) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid JSON in variants field",
-        });
-      }
-    }
 
-    let parsedNutrition = nutrition;
-    if (typeof nutrition === "string") {
+    /* ------------------ VARIANTS ------------------ */
+    let parsedVariants = [];
+    if (variants) {
       try {
-        parsedNutrition = JSON.parse(nutrition);
+        parsedVariants = typeof variants === "string" ? JSON.parse(variants) : variants;
       } catch {
-        parsedNutrition = {};
+        parsedVariants = [];
       }
     }
 
-    let parsedDetails = details;
-    if (typeof details === "string") {
-      try {
-        parsedDetails = JSON.parse(details);
-      } catch {
-        parsedDetails = {};
-      }
-    }
+    const allowedWeights = [
+      "250g",
+      "500g",
+      "750g",
+      "1kg",
+      "2kg",
+      "3kg",
+      "5kg",
+      "10kg",
+      "12kg",
+      "15kg",
+    ];
 
-    let parsedCustomBoxPrices = customBoxPrices;
-    if (typeof customBoxPrices === "string") {
-      try {
-        parsedCustomBoxPrices = JSON.parse(customBoxPrices);
-      } catch {
-        parsedCustomBoxPrices = [];
-      }
-    }
+    const normalizedVariants = parsedVariants
+      .filter(v => v?.weight && allowedWeights.includes(v.weight))
+      .map(v => ({
+        size: v.size || "",
+        weight: v.weight,
+        stock: Number(v.stock) || 0,
+        price: Number(v.price) || 0,
+        salesPrice: Number(v.salesPrice) || 0,
+      }));
 
-    // Normalize variants
-    const normalizedVariants = (parsedVariants || []).map((v) => ({
-      size: v.size,
-      weight: v.weight,
-      stock: Number(v.stock) || 0,
-      price: Number(v.price) || 0,
-      salesPrice: v.salesPrice ? Number(v.salesPrice) : 0,
-    }));
+    /* ------------------ NUTRITION ------------------ */
+    let parsedNutrition = {};
+    try {
+      parsedNutrition = nutrition ? JSON.parse(nutrition) : {};
+    } catch {}
 
-    // Normalize custom box prices
-    const normalizedCustomBoxPrices = (parsedCustomBoxPrices || []).map((p) => ({
-      size: p.size,
-      pricePerPiece: Number(p.pricePerPiece) || 0,
-    }));
+    /* ------------------ DETAILS ------------------ */
+    let parsedDetails = {};
+    try {
+      parsedDetails = details ? JSON.parse(details) : {};
+    } catch {}
 
-    // Upload main image
-    const uploadedMain = await uploadMedia(mainImage.path);
+    /* ------------------ CUSTOM BOX ------------------ */
+    let parsedCustomBoxPrices = [];
+    try {
+      parsedCustomBoxPrices = customBoxPrices
+        ? JSON.parse(customBoxPrices)
+        : [];
+    } catch {}
 
-    // Upload gallery images
-    const uploadedGallery = await Promise.all(
-      galleryImages.map((file) => uploadMedia(file.path))
+    /* ------------------ BADGES ------------------ */
+    let parsedBadges = ["Bestseller", "Organic"];
+    try {
+      parsedBadges = badges ? JSON.parse(badges) : parsedBadges;
+    } catch {}
+
+    /* ------------------ IMAGES ------------------ */
+    const mainImage = await uploadMedia(files[0].path);
+    const gallery = await Promise.all(
+      files.slice(1).map(f => uploadMedia(f.path))
     );
 
-    // Create new product
-    const newProduct = new Products({
+    /* ------------------ SAVE ------------------ */
+    const product = new Products({
       title,
       description,
-      nutrition: parsedNutrition || {},
-      details: parsedDetails || {},
-      rating: rating || 0,
-      reviewsCount: reviewsCount || 0,
-      badges: badges || ["Bestseller", "Organic"],
+      nutrition: parsedNutrition,
+      details: parsedDetails,
+      rating: Number(rating) || 0,
+      reviewsCount: Number(reviewsCount) || 0,
+      badges: parsedBadges,
       view360: view360 || "",
       variants: normalizedVariants,
-      customBoxPrices: normalizedCustomBoxPrices, // ✅ save custom box prices
-      image: uploadedMain.secure_url,
-      images: uploadedGallery.map((img) => img.secure_url),
+      customBoxPrices: parsedCustomBoxPrices,
+      image: mainImage.secure_url,
+      images: gallery.map(i => i.secure_url),
     });
 
-    await newProduct.save();
+    await product.save();
 
-    return res.status(201).json({
+    res.status(201).json({
       success: true,
       message: "Product added successfully",
-      product: newProduct,
+      product,
     });
   } catch (error) {
-    console.error("Error:", error.message);
-    return res.status(500).json({
+    console.error("ADD PRODUCT ERROR:", error);
+    res.status(500).json({
       success: false,
-      message: "Failed to add product",
+      message: error.message,
     });
   }
 };
 
 
-
-
 export const getAllProducts = async (req, res) => {
   try {
-    const products = await Products.find().sort({ created: -1 });
-    res.status(200).json({
+    // Sorting by createdAt (correct timestamp field)
+    const products = await Products.find().sort({ createdAt: -1 });
+
+    return res.status(200).json({
       success: true,
+      count: products.length,
       products,
     });
   } catch (error) {
@@ -145,6 +148,7 @@ export const getAllProducts = async (req, res) => {
     });
   }
 };
+
 
 export const editProduct = async (req, res) => {
   try {
@@ -160,25 +164,32 @@ export const editProduct = async (req, res) => {
       view360,
       variants,
       customBoxPrices,
+      price: productPrice,
+      salesPrice: productSalesPrice,
+      stock: productStock,
     } = req.body;
 
-    // Parse JSON fields safely
-    const parseField = (field, fallback) => {
-      if (!field) return fallback;
+    // Helper to safely parse field (returns {present, value})
+    const safeParse = (field) => {
+      if (typeof field === "undefined") return { present: false, value: undefined };
+      if (field === null) return { present: true, value: null };
       if (typeof field === "string") {
         try {
-          return JSON.parse(field);
+          return { present: true, value: JSON.parse(field) };
         } catch {
-          return fallback;
+          // If it's a plain string that isn't JSON, return the raw string (caller can decide)
+          return { present: true, value: field };
         }
       }
-      return field;
+      return { present: true, value: field };
     };
 
-    const parsedVariants = parseField(variants, []);
-    const parsedNutrition = parseField(nutrition, {});
-    const parsedDetails = parseField(details, {});
-    const parsedCustomBoxPrices = parseField(customBoxPrices, []);
+    // Parse fields
+    const parsedVariantsObj = safeParse(variants);
+    const parsedNutritionObj = safeParse(nutrition);
+    const parsedDetailsObj = safeParse(details);
+    const parsedCustomBoxPricesObj = safeParse(customBoxPrices);
+    const parsedBadgesObj = safeParse(badges);
 
     // Find existing product
     const product = await Products.findById(id);
@@ -192,40 +203,105 @@ export const editProduct = async (req, res) => {
     // Upload new images if any
     const files = req.files || [];
     let mainImage = product.image;
-    let galleryImages = product.images || [];
+    let galleryImages = Array.isArray(product.images) ? [...product.images] : [];
 
     if (files.length > 0) {
       const uploaded = await Promise.all(files.map((f) => uploadMedia(f.path)));
-      // first image = main, rest = gallery
+      // first uploaded -> main (replace)
       mainImage = uploaded[0]?.secure_url || mainImage;
-      galleryImages = uploaded.slice(1).map((img) => img.secure_url);
+      // remaining uploaded -> append to existing gallery
+      const newGallery = uploaded.slice(1).map((u) => u?.secure_url).filter(Boolean);
+      galleryImages = galleryImages.concat(newGallery);
     }
 
-    // Normalize variants
-    const normalizedVariants = (parsedVariants || []).map((v) => ({
-      size: v.size,
-      weight: v.weight,
-      stock: Number(v.stock) || 0,
-      price: Number(v.price) || 0,
-      salesPrice: Number(v.salesPrice) || 0,
-    }));
+    // Normalize variants if provided and is an array (or parses to array)
+    let normalizedVariants;
+    if (parsedVariantsObj.present) {
+      let pv = parsedVariantsObj.value;
+      if (typeof pv === "string") {
+        // if client passed a non-json string, try comma separation -> unlikely for variants
+        try {
+          pv = JSON.parse(pv);
+        } catch {
+          pv = [];
+        }
+      }
+      if (!Array.isArray(pv)) pv = [];
+      normalizedVariants = pv.map((v) => ({
+        size: v?.size || "",
+        weight: v?.weight || "",
+        stock: Number(v?.stock) || 0,
+        price: Number(v?.price) || 0,
+        salesPrice: Number(v?.salesPrice) || 0,
+      }));
+    }
 
-    const normalizedCustomBoxPrices = (parsedCustomBoxPrices || []).map((p) => ({
-      size: p.size,
-      pricePerPiece: Number(p.pricePerPiece) || 0,
-    }));
+    // Normalize custom box prices if provided
+    let normalizedCustomBoxPrices;
+    if (parsedCustomBoxPricesObj.present) {
+      let pcb = parsedCustomBoxPricesObj.value;
+      if (!Array.isArray(pcb)) pcb = [];
+      normalizedCustomBoxPrices = pcb.map((p) => ({
+        size: p?.size || "",
+        pricePerPiece: Number(p?.pricePerPiece) || 0,
+      }));
+    }
 
-    // Update product fields
-    product.title = title || product.title;
-    product.description = description || product.description;
-    product.nutrition = parsedNutrition;
-    product.details = parsedDetails;
-    product.rating = rating || product.rating;
-    product.reviewsCount = reviewsCount || product.reviewsCount;
-    product.badges = badges || product.badges;
-    product.view360 = view360 || product.view360;
-    product.variants = normalizedVariants;
-    product.customBoxPrices = normalizedCustomBoxPrices;
+    // Parse badges (accept array, JSON string or comma-separated string)
+    let finalBadges;
+    if (parsedBadgesObj.present) {
+      let pb = parsedBadgesObj.value;
+      if (typeof pb === "string") {
+        // if JSON string was parsed to a string (i.e., not JSON), split by comma
+        try {
+          pb = JSON.parse(pb);
+        } catch {
+          pb = pb
+            .split?.(",")
+            .map((b) => b.trim())
+            .filter(Boolean);
+        }
+      }
+      if (!Array.isArray(pb)) pb = [];
+      finalBadges = pb;
+    }
+
+    // Update only fields provided (keep previous values for fields not provided)
+    if (typeof title !== "undefined") product.title = title || product.title;
+    if (typeof description !== "undefined")
+      product.description = description || product.description;
+
+    if (parsedNutritionObj.present) {
+      product.nutrition = parsedNutritionObj.value || {};
+    }
+
+    if (parsedDetailsObj.present) {
+      product.details = parsedDetailsObj.value || {};
+    }
+
+    if (typeof rating !== "undefined") product.rating = Number(rating) || 0;
+    if (typeof reviewsCount !== "undefined")
+      product.reviewsCount = Number(reviewsCount) || 0;
+
+    if (typeof finalBadges !== "undefined") product.badges = finalBadges;
+    if (typeof view360 !== "undefined") product.view360 = view360 || product.view360;
+
+    // If normalizedVariants was prepared (i.e., variants provided), set it; otherwise keep existing
+    if (typeof normalizedVariants !== "undefined") {
+      product.variants = normalizedVariants;
+    }
+
+    if (typeof normalizedCustomBoxPrices !== "undefined") {
+      product.customBoxPrices = normalizedCustomBoxPrices;
+    }
+
+    // Update product-level price/stock if provided
+    if (typeof productPrice !== "undefined") product.price = Number(productPrice) || 0;
+    if (typeof productSalesPrice !== "undefined")
+      product.salesPrice = Number(productSalesPrice) || 0;
+    if (typeof productStock !== "undefined") product.stock = Number(productStock) || 0;
+
+    // Images
     product.image = mainImage;
     product.images = galleryImages;
 
@@ -241,6 +317,7 @@ export const editProduct = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to edit product",
+      error: error.message,
     });
   }
 };
