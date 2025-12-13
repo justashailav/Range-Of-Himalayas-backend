@@ -6,34 +6,83 @@ const orderSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    cartId: String,
+
+    cartId: {
+      type: String,
+    },
+
     cartItems: [
       {
-        productId: String,
-        title: String,
-        image: String,
-        salesPrice: String,
-        price: String,
-        quantity: Number,
-        size: String,
+        productId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Products",
+          required: true,
+        },
+
+        title: {
+          type: String,
+          required: true,
+        },
+
+        image: {
+          type: String,
+          default: "",
+        },
+
+        price: {
+          type: Number,
+          required: true,
+        },
+
+        salesPrice: {
+          type: Number,
+          default: 0,
+        },
+
+        quantity: {
+          type: Number,
+          required: true,
+          min: 1,
+        },
+
+        // ✅ OPTIONAL SIZE (fruits only)
+        size: {
+          type: String,
+          enum: ["Small", "Medium", "Large", ""],
+          default: "",
+        },
+
+        // ✅ REQUIRED WEIGHT (fruits + dry fruits)
         weight: {
           type: String,
-          enum: ["1kg", "2kg", "3kg", "5kg", "10kg", "12kg", "15kg"],
+          enum: [
+            "250g",
+            "500g",
+            "750g",
+            "1kg",
+            "2kg",
+            "3kg",
+            "5kg",
+            "10kg",
+            "12kg",
+            "15kg",
+          ],
           required: true,
         },
       },
     ],
+
     boxes: [
       {
         boxId: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "CustomBox",
-          required: false,
         },
+
         boxName: {
           type: String,
-          required: false,
         },
+
         items: [
           {
             productId: {
@@ -41,10 +90,13 @@ const orderSchema = new mongoose.Schema(
               ref: "Products",
               required: true,
             },
+
             quantity: {
               type: Number,
               required: true,
+              min: 1,
             },
+
             size: {
               type: String,
               enum: ["Small", "Medium", "Large"],
@@ -54,6 +106,7 @@ const orderSchema = new mongoose.Schema(
         ],
       },
     ],
+
     addressInfo: {
       addressId: String,
       address: String,
@@ -62,36 +115,24 @@ const orderSchema = new mongoose.Schema(
       phone: String,
       notes: String,
     },
+
     paymentMethod: {
       type: String,
-      enum: ["razorpay"],
+      enum: ["razorpay", "cod"],
       required: true,
     },
+
     paymentStatus: {
       type: String,
       enum: ["pending", "paid", "failed"],
       default: "pending",
     },
+
     totalAmount: {
       type: Number,
       required: true,
     },
-    orderDate: {
-      type: Date,
-      default: Date.now,
-    },
-    orderUpdateDate: {
-      type: Date,
-      default: Date.now,
-    },
-    paymentId: String,
-    razorpaySignature: String,
-    payerId: String,
 
-    code: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Coupon",
-    },
     orderStatus: {
       type: String,
       enum: [
@@ -129,70 +170,75 @@ const orderSchema = new mongoose.Schema(
         },
       },
     ],
+
     cancelStatus: {
       type: String,
       enum: ["none", "requested", "cancelled"],
       default: "none",
     },
-    cancellationReason: String,
+
+    cancellationReason: {
+      type: String,
+    },
+
     cancelledItems: [
       {
-        productId: { type: mongoose.Schema.Types.ObjectId, ref: "Products" },
-        quantity: { type: Number, required: true },
-        price: { type: Number, required: true },
-        reason: String,
-        cancelledAt: { type: Date, default: Date.now },
-        refundAvailableDate: {
-          type: Date,
-          default: function () {
-            return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-          },
+        productId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Products",
         },
-        refunded: { type: Boolean, default: false },
-      },
-    ],
-    returnRequests: [
-      {
-        reason: {
-          type: String,
+        quantity: {
+          type: Number,
           required: true,
         },
-        photos: [{ type: String }],
-        videos: [{ type: String }],
-        status: {
-          type: String,
-          enum: ["requested", "approved", "rejected", "refunded"],
-          default: "requested",
-        },
-        refundAmount: {
+        price: {
           type: Number,
-          default: 0,
+          required: true,
         },
-        requestedAt: {
+        reason: String,
+        cancelledAt: {
           type: Date,
           default: Date.now,
         },
-        reviewedAt: Date,
+        refundAvailableDate: {
+          type: Date,
+          default: () =>
+            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        },
+        refunded: {
+          type: Boolean,
+          default: false,
+        },
       },
     ],
+
     returnStatus: {
       type: String,
       enum: ["none", "requested", "approved", "rejected", "refunded"],
       default: "none",
     },
+
     refundStatus: {
       type: String,
       enum: ["none", "processing", "refunded", "rejected", "manual"],
       default: "none",
     },
+
     refundAmount: {
       type: Number,
       default: 0,
     },
+
     freeGift: {
-      name: { type: String },
-      quantity: { type: Number, default: 0 },
-      price: { type: Number, default: 0 },
+      name: String,
+      quantity: {
+        type: Number,
+        default: 0,
+      },
+      price: {
+        type: Number,
+        default: 0,
+      },
     },
   },
   { timestamps: true }

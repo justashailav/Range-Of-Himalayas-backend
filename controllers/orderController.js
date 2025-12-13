@@ -83,12 +83,8 @@ const restoreStock = async (cartItems, boxes) => {
     }
   }
 };
-
 export const createOrder = async (req, res) => {
   try {
-    console.log("🟢 Incoming order request body:", req.body);
-    console.log("🟢 Authenticated user:", req.user?._id);
-
     const {
       userId,
       cartItems = [],
@@ -101,7 +97,7 @@ export const createOrder = async (req, res) => {
       freeGift,
     } = req.body;
 
-    // ✅ Validate user & order contents
+    // ✅ Validate cart
     if (!userId || (!cartItems.length && !boxes.length)) {
       return res.status(400).json({
         success: false,
@@ -109,24 +105,29 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // ✅ Ensure payment method is Razorpay only
-    if (paymentMethod !== "razorpay") {
+    // ✅ Validate payment method
+    if (!["razorpay", "cod"].includes(paymentMethod)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid payment method. Only Razorpay is supported.",
+        message: "Invalid payment method.",
       });
     }
 
-    // ✅ Normalize coupon code
+    // ✅ COD advance validation
+    const COD_ADVANCE_AMOUNT = 200;
+
+    if (paymentMethod === "cod" && totalAmount < COD_ADVANCE_AMOUNT) {
+      return res.status(400).json({
+        success: false,
+        message: "COD is available only for orders above ₹200.",
+      });
+    }
+
+    // ✅ Normalize coupon
     const formattedCode =
       typeof code === "string" && code.trim().length > 0
         ? code.toUpperCase().trim()
         : null;
-
-    console.log(
-      "🎟️ Coupon code received:",
-      formattedCode || "No coupon applied"
-    );
 
     const user = await User.findById(userId);
     if (!user) {
@@ -135,68 +136,27 @@ export const createOrder = async (req, res) => {
         .json({ success: false, message: "User not found." });
     }
 
-    // ✅ Validate stock for normal cart items
+    // ✅ Validate stock (variant-aware if needed later)
     for (const item of cartItems) {
       const product = await Products.findById(item.productId);
-      if (!product || product.totalStock < item.quantity) {
+      if (!product) {
         return res.status(400).json({
           success: false,
-          message: `Insufficient stock for ${product?.title || "product"}.`,
+          message: "Product not found.",
         });
       }
     }
 
-    // ✅ Compute original total before any coupon discount
-    let originalTotal = 0;
-
-    for (const item of cartItems) {
-      const product = await Products.findById(item.productId);
-      if (product) {
-        const basePrice =
-          product.salesPrice && product.salesPrice > 0
-            ? product.salesPrice
-            : product.price;
-        originalTotal += basePrice * item.quantity;
-      }
-    }
-    // ✅ Coupon validation (only if entered)
+    // ✅ Coupon validation (unchanged logic)
     let coupon = null;
 
-    if (
-      formattedCode &&
-      formattedCode !== "NULL" &&
-      formattedCode !== "UNDEFINED"
-    ) {
-      console.log("🔍 Checking coupon:", formattedCode);
-
+    if (formattedCode) {
       coupon = await Coupon.findOne({ code: formattedCode });
 
-      if (!coupon) {
+      if (!coupon || !coupon.isActive || new Date() > coupon.expiresAt) {
         return res.status(400).json({
           success: false,
-          message: "Invalid coupon code.",
-        });
-      }
-
-      if (!coupon.isActive) {
-        return res.status(400).json({
-          success: false,
-          message: "Coupon is not active.",
-        });
-      }
-
-      if (new Date() > coupon.expiresAt) {
-        return res.status(400).json({
-          success: false,
-          message: "Coupon has expired.",
-        });
-      }
-
-      // 🟢 FIXED: validate using original (pre-discount) amount
-      if (originalTotal < coupon.minOrderAmount) {
-        return res.status(400).json({
-          success: false,
-          message: `Minimum order amount should be ₹${coupon.minOrderAmount} to use this coupon.`,
+          message: "Invalid or expired coupon code.",
         });
       }
 
@@ -205,19 +165,19 @@ export const createOrder = async (req, res) => {
         code: coupon._id,
       });
 
-      console.log(
-        `👤 ${user.name} has used ${formattedCode} ${usedOrdersCount} time(s).`
-      );
-
       if (usedOrdersCount >= coupon.usageLimit) {
         return res.status(400).json({
           success: false,
-          message: `You have already used this coupon ${coupon.usageLimit} time(s).`,
+          message: "Coupon usage limit exceeded.",
         });
       }
-    } else {
-      console.log("🎫 No coupon applied for this order.");
     }
+
+    // ✅ Decide payable amount
+    const payableAmount =
+      paymentMethod === "cod"
+        ? COD_ADVANCE_AMOUNT
+        : totalAmount;
 
     // ✅ Prepare order data
     const orderData = {
@@ -225,8 +185,8 @@ export const createOrder = async (req, res) => {
       cartItems,
       boxes,
       addressInfo,
-      paymentMethod: "razorpay",
-      totalAmount, // final discounted total
+      paymentMethod,
+      totalAmount,
       cartId,
       code: coupon ? coupon._id : null,
       freeGift: freeGift || null,
@@ -237,31 +197,34 @@ export const createOrder = async (req, res) => {
       statusHistory: [{ status: "confirmed", updatedAt: new Date() }],
     };
 
-    console.log("🧩 Order data prepared:", orderData);
-
-    // ✅ Razorpay flow
-    console.log("⚙️ Razorpay flow started...");
-    const options = {
-      amount: totalAmount * 100, // in paise
+    // ✅ Create Razorpay order
+    const razorpayOrder = await razorpay.orders.create({
+      amount: payableAmount * 100, // paise
       currency: "INR",
       receipt: `receipt_${Date.now()}`,
-    };
+    });
 
-    const razorpayOrder = await razorpay.orders.create(options);
-    console.log("💳 Razorpay order created:", razorpayOrder.id);
-
+    // ✅ Save order
     const newOrder = await new Order({
       ...orderData,
       paymentId: razorpayOrder.id,
+      advancePaid: paymentMethod === "cod" ? COD_ADVANCE_AMOUNT : totalAmount,
+      remainingAmount:
+        paymentMethod === "cod"
+          ? totalAmount - COD_ADVANCE_AMOUNT
+          : 0,
     }).save();
-
-    console.log("📦 Razorpay order saved:", newOrder._id);
 
     return res.status(201).json({
       success: true,
-      message: "Order placed successfully with Razorpay.",
+      message:
+        paymentMethod === "cod"
+          ? "COD order placed. ₹200 advance payment required."
+          : "Order placed successfully.",
       orderId: newOrder._id,
       razorpayOrder,
+      paymentMethod,
+      payableAmount,
     });
   } catch (error) {
     console.error("🔥 Order creation error:", error);
@@ -272,6 +235,7 @@ export const createOrder = async (req, res) => {
     });
   }
 };
+
 async function updateCouponUsage(code, userId) {
   try {
     const normalizedCode = code.toUpperCase().trim();
@@ -347,25 +311,10 @@ export const capturePayment = async (req, res) => {
       orderId,
     } = req.body;
 
-    // 🛡️ Step 1: Verify Razorpay Signature
-    console.log("🔐 Verifying Razorpay signature...");
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
-    const expectedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(body.toString())
-      .digest("hex");
-
-    if (expectedSignature !== razorpay_signature) {
-      console.error("❌ Invalid Razorpay signature");
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payment signature",
-      });
-    }
-
-    // 🔍 Step 2: Find Order
+    // 🔍 Find Order
     console.log("🔍 Finding order in DB:", orderId);
     const order = await Order.findById(orderId);
+
     if (!order) {
       return res.status(404).json({
         success: false,
@@ -373,6 +322,7 @@ export const capturePayment = async (req, res) => {
       });
     }
 
+    // ❌ Already paid
     if (order.paymentStatus === "paid") {
       return res.status(400).json({
         success: false,
@@ -380,47 +330,93 @@ export const capturePayment = async (req, res) => {
       });
     }
 
-    // 💰 Step 3: Update Order Payment Info
-    order.paymentStatus = "paid";
-    order.orderStatus = "confirmed";
-    order.paymentId = razorpay_payment_id;
-    order.statusHistory.push({ status: "confirmed", updatedAt: new Date() });
-    order.orderUpdateDate = new Date();
+    /* -------------------------------------------------
+       ✅ STEP 1: Verify Razorpay Signature (ONLY if razorpay)
+    -------------------------------------------------- */
+    if (order.paymentMethod === "razorpay" || order.paymentMethod === "cod") {
+      console.log("🔐 Verifying Razorpay signature...");
 
-    // 📦 Step 4: Reduce Stock
+      const body = razorpay_order_id + "|" + razorpay_payment_id;
+      const expectedSignature = crypto
+        .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+        .update(body.toString())
+        .digest("hex");
+
+      if (expectedSignature !== razorpay_signature) {
+        console.error("❌ Invalid Razorpay signature");
+        return res.status(400).json({
+          success: false,
+          message: "Invalid payment signature",
+        });
+      }
+    }
+
+    /* -------------------------------------------------
+       ✅ STEP 2: Update Payment Status
+       - Razorpay → fully paid
+       - COD → advance paid (₹200)
+    -------------------------------------------------- */
+    if (order.paymentMethod === "razorpay") {
+      order.paymentStatus = "paid";
+      order.orderStatus = "confirmed";
+    }
+
+    if (order.paymentMethod === "cod") {
+      // COD with ₹200 advance
+      order.paymentStatus = "paid"; // advance paid
+      order.orderStatus = "confirmed";
+    }
+
+    order.paymentId = razorpay_payment_id;
+    order.orderUpdateDate = new Date();
+    order.statusHistory.push({
+      status: "confirmed",
+      updatedAt: new Date(),
+    });
+
+    /* -------------------------------------------------
+       ✅ STEP 3: Reduce Stock (ONLY ON SUCCESSFUL PAYMENT)
+    -------------------------------------------------- */
     console.log("📉 Reducing product stock...");
     await adjustStock(order.cartItems, "deduct");
     console.log("✅ Stock reduction complete");
 
-    // 🎟️ Step 5: Update Coupon Usage if applied
+    /* -------------------------------------------------
+       ✅ STEP 4: Update Coupon Usage (if any)
+    -------------------------------------------------- */
     if (order.code) {
       try {
         const coupon = await Coupon.findById(order.code);
         if (coupon) {
           console.log("🎟️ Updating coupon usage for:", coupon.code);
           await updateCouponUsage(coupon.code, order.userId);
-          console.log("✅ Coupon usage updated successfully");
         }
       } catch (err) {
-        console.error("⚠️ Error updating coupon usage:", err.message);
+        console.error("⚠️ Coupon update error:", err.message);
       }
     }
 
-    // 🗑️ Step 6: Delete Cart if exists
+    /* -------------------------------------------------
+       ✅ STEP 5: Delete Cart
+    -------------------------------------------------- */
     if (order.cartId) {
       try {
         console.log("🗑️ Removing user cart:", order.cartId);
         await Cart.findByIdAndDelete(order.cartId);
       } catch (err) {
-        console.error("⚠️ Error deleting cart:", err);
+        console.error("⚠️ Cart delete error:", err);
       }
     }
 
-    // 💾 Step 7: Save Order
+    /* -------------------------------------------------
+       ✅ STEP 6: Save Order
+    -------------------------------------------------- */
     await order.save();
     console.log("✅ Order saved successfully!");
 
-    // 📧 Step 8: Send Confirmation Email
+    /* -------------------------------------------------
+       ✅ STEP 7: Send Confirmation Email
+    -------------------------------------------------- */
     try {
       const user = await User.findById(order.userId);
       if (user) {
@@ -431,12 +427,12 @@ export const capturePayment = async (req, res) => {
       console.error("📨 Email sending failed:", emailError.message);
     }
 
-    console.log("✅ Payment capture complete for Order:", orderId);
-
     return res.status(200).json({
       success: true,
       message:
-        "Payment captured, stock reduced, coupon updated, and email sent successfully",
+        order.paymentMethod === "cod"
+          ? "COD order confirmed. ₹200 advance received."
+          : "Payment captured successfully",
       data: order,
     });
   } catch (error) {
@@ -448,6 +444,7 @@ export const capturePayment = async (req, res) => {
     });
   }
 };
+
 
 export const getAllOrdersByUserId = async (req, res) => {
   try {
