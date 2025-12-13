@@ -6,13 +6,17 @@ import { CustomBox } from "../models/customBox.js";
 export const addToCart = async (req, res) => {
   try {
     const { userId, productId, quantity, size, weight } = req.body;
-    console.log(size)
-    if (!userId || !productId || !quantity || !size || !weight) {
+
+    // ✅ normalize size (optional)
+    const normalizedSize = size || "";
+
+    if (!userId || !productId || !quantity || !weight) {
       return res.status(400).json({
         success: false,
         message: "Invalid data provided!",
       });
     }
+
     const product = await Products.findById(productId);
     if (!product) {
       return res.status(404).json({
@@ -21,9 +25,11 @@ export const addToCart = async (req, res) => {
       });
     }
 
-    // ✅ Find the selected variant in product
+    // ✅ Find variant (size optional)
     const variant = product.variants.find(
-      (v) => v.size === size && v.weight === weight
+      (v) =>
+        (v.size || "") === normalizedSize &&
+        v.weight === weight
     );
 
     if (!variant) {
@@ -39,30 +45,31 @@ export const addToCart = async (req, res) => {
         message: `Only ${variant.stock} items available for this variant`,
       });
     }
+
     let cart = await Cart.findOne({ userId });
     if (!cart) {
       cart = new Cart({ userId, items: [] });
     }
+
     const existingItemIndex = cart.items.findIndex(
       (item) =>
         item.productId.toString() === productId.toString() &&
-        item.size === size &&
+        (item.size || "") === normalizedSize &&
         item.weight === weight
     );
 
     if (existingItemIndex === -1) {
-      // ➕ Add new item with prices from product variant
+      // ➕ Add new item
       cart.items.push({
         productId,
         quantity,
-        size,
+        size: normalizedSize, // ✅ empty string allowed
         weight,
-        price: variant.price,
-        salesPrice: variant.salesPrice || 0,
       });
     } else {
-      // 🔄 Update quantity if already exists
-      const newQuantity = cart.items[existingItemIndex].quantity + quantity;
+      // 🔄 Update quantity
+      const newQuantity =
+        cart.items[existingItemIndex].quantity + quantity;
 
       if (newQuantity > variant.stock) {
         return res.status(400).json({
@@ -74,22 +81,22 @@ export const addToCart = async (req, res) => {
       cart.items[existingItemIndex].quantity = newQuantity;
     }
 
-    // ✅ Save cart
     await cart.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Product added to cart successfully",
       cart,
     });
   } catch (error) {
-    console.error(error)
-    res.status(500).json({
+    console.error("Add to cart error:", error);
+    return res.status(500).json({
       success: false,
       message: "Internal server error",
     });
   }
 };
+
 
 
 export const fetchCartItems = async (req, res) => {

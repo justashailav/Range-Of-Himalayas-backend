@@ -15,19 +15,36 @@ const cartSchema = new mongoose.Schema(
           ref: "Products",
           required: true,
         },
+
         quantity: {
           type: Number,
           required: true,
           min: 1,
         },
+
+        // ✅ SIZE → OPTIONAL (matches Product variant)
         size: {
           type: String,
-          enum: ["Small", "Medium", "Large"], 
-          required: true,
+          enum: ["Small", "Medium", "Large", ""],
+          default: "",
         },
+
+        // ✅ WEIGHT → REQUIRED + same enum as Product
         weight: {
           type: String,
-          enum: ["1kg","2kg","3kg","5kg", "10kg", "12kg", "15kg"],
+          enum: [
+            "250g",
+            "500g",
+            "750g",
+            "1kg",
+            "2kg",
+            "3kg",
+            "5kg",
+            "10kg",
+            "12kg",
+            "15kg",
+          ],
+          required: true,
         },
       },
     ],
@@ -39,7 +56,11 @@ const cartSchema = new mongoose.Schema(
           ref: "CustomBox",
           required: true,
         },
-        boxName: { type: String },
+
+        boxName: {
+          type: String,
+        },
+
         items: [
           {
             productId: {
@@ -47,19 +68,36 @@ const cartSchema = new mongoose.Schema(
               ref: "Products",
               required: true,
             },
+
             quantity: {
               type: Number,
               required: true,
               min: 1,
             },
+
+            // ✅ SIZE OPTIONAL
             size: {
               type: String,
-              enum: ["Small", "Medium", "Large"],
-              required: true,
+              enum: ["Small", "Medium", "Large", ""],
+              default: "",
             },
+
+            // ✅ WEIGHT REQUIRED
             weight: {
               type: String,
-              enum: ["1kg","2kg","3kg","5kg", "10kg", "12kg", "15kg"],
+              enum: [
+                "250g",
+                "500g",
+                "750g",
+                "1kg",
+                "2kg",
+                "3kg",
+                "5kg",
+                "10kg",
+                "12kg",
+                "15kg",
+              ],
+              required: true,
             },
           },
         ],
