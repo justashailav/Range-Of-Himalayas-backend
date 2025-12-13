@@ -153,6 +153,7 @@ export const getAllProducts = async (req, res) => {
 export const editProduct = async (req, res) => {
   try {
     const { id } = req.params;
+
     let {
       title,
       description,
@@ -164,34 +165,12 @@ export const editProduct = async (req, res) => {
       view360,
       variants,
       customBoxPrices,
-      price: productPrice,
-      salesPrice: productSalesPrice,
-      stock: productStock,
+      price,
+      salesPrice,
+      stock,
     } = req.body;
 
-    // Helper to safely parse field (returns {present, value})
-    const safeParse = (field) => {
-      if (typeof field === "undefined") return { present: false, value: undefined };
-      if (field === null) return { present: true, value: null };
-      if (typeof field === "string") {
-        try {
-          return { present: true, value: JSON.parse(field) };
-        } catch {
-          // If it's a plain string that isn't JSON, return the raw string (caller can decide)
-          return { present: true, value: field };
-        }
-      }
-      return { present: true, value: field };
-    };
-
-    // Parse fields
-    const parsedVariantsObj = safeParse(variants);
-    const parsedNutritionObj = safeParse(nutrition);
-    const parsedDetailsObj = safeParse(details);
-    const parsedCustomBoxPricesObj = safeParse(customBoxPrices);
-    const parsedBadgesObj = safeParse(badges);
-
-    // Find existing product
+    // ---------------- FIND PRODUCT ----------------
     const product = await Products.findById(id);
     if (!product) {
       return res.status(404).json({
@@ -200,108 +179,119 @@ export const editProduct = async (req, res) => {
       });
     }
 
-    // Upload new images if any
-    const files = req.files || [];
-    let mainImage = product.image;
-    let galleryImages = Array.isArray(product.images) ? [...product.images] : [];
-
-    if (files.length > 0) {
-      const uploaded = await Promise.all(files.map((f) => uploadMedia(f.path)));
-      // first uploaded -> main (replace)
-      mainImage = uploaded[0]?.secure_url || mainImage;
-      // remaining uploaded -> append to existing gallery
-      const newGallery = uploaded.slice(1).map((u) => u?.secure_url).filter(Boolean);
-      galleryImages = galleryImages.concat(newGallery);
-    }
-
-    // Normalize variants if provided and is an array (or parses to array)
-    let normalizedVariants;
-    if (parsedVariantsObj.present) {
-      let pv = parsedVariantsObj.value;
-      if (typeof pv === "string") {
-        // if client passed a non-json string, try comma separation -> unlikely for variants
+    // ---------------- SAFE PARSE HELPER ----------------
+    const safeParse = (value, fallback) => {
+      if (typeof value === "undefined") return undefined;
+      if (typeof value === "string") {
         try {
-          pv = JSON.parse(pv);
+          return JSON.parse(value);
         } catch {
-          pv = [];
+          return fallback;
         }
       }
-      if (!Array.isArray(pv)) pv = [];
-      normalizedVariants = pv.map((v) => ({
-        size: v?.size || "",
-        weight: v?.weight || "",
+      return value;
+    };
+
+    // ---------------- PARSE FIELDS ----------------
+    const parsedNutrition = safeParse(nutrition, {});
+    const parsedDetails = safeParse(details, {});
+    const parsedVariants = safeParse(variants, []);
+    const parsedCustomBoxPrices = safeParse(customBoxPrices, []);
+    const parsedBadges = safeParse(badges, []);
+
+    // ---------------- IMAGE HANDLING ----------------
+    const files = req.files || [];
+
+    let mainImage = product.image;
+    let galleryImages = [...(product.images || [])];
+
+    if (files.length > 0) {
+      const uploaded = await Promise.all(
+        files.map((file) => uploadMedia(file.path))
+      );
+
+      // First image replaces main image
+      if (uploaded[0]?.secure_url) {
+        mainImage = uploaded[0].secure_url;
+      }
+
+      // Rest go to gallery
+      uploaded.slice(1).forEach((u) => {
+        if (u?.secure_url) galleryImages.push(u.secure_url);
+      });
+    }
+
+    // ---------------- NORMALIZE VARIANTS ----------------
+    let normalizedVariants;
+    if (Array.isArray(parsedVariants)) {
+      normalizedVariants = parsedVariants.map((v) => ({
+        size: v?.size || "",                 // OPTIONAL
+        weight: v?.weight || "",             // REQUIRED by schema
         stock: Number(v?.stock) || 0,
         price: Number(v?.price) || 0,
         salesPrice: Number(v?.salesPrice) || 0,
       }));
     }
 
-    // Normalize custom box prices if provided
+    // ---------------- NORMALIZE CUSTOM BOX ----------------
     let normalizedCustomBoxPrices;
-    if (parsedCustomBoxPricesObj.present) {
-      let pcb = parsedCustomBoxPricesObj.value;
-      if (!Array.isArray(pcb)) pcb = [];
-      normalizedCustomBoxPrices = pcb.map((p) => ({
+    if (Array.isArray(parsedCustomBoxPrices)) {
+      normalizedCustomBoxPrices = parsedCustomBoxPrices.map((p) => ({
         size: p?.size || "",
         pricePerPiece: Number(p?.pricePerPiece) || 0,
       }));
     }
 
-    // Parse badges (accept array, JSON string or comma-separated string)
+    // ---------------- BADGES ----------------
     let finalBadges;
-    if (parsedBadgesObj.present) {
-      let pb = parsedBadgesObj.value;
-      if (typeof pb === "string") {
-        // if JSON string was parsed to a string (i.e., not JSON), split by comma
-        try {
-          pb = JSON.parse(pb);
-        } catch {
-          pb = pb
-            .split?.(",")
-            .map((b) => b.trim())
-            .filter(Boolean);
-        }
-      }
-      if (!Array.isArray(pb)) pb = [];
-      finalBadges = pb;
+    if (Array.isArray(parsedBadges)) {
+      finalBadges = parsedBadges;
+    } else if (typeof badges === "string") {
+      finalBadges = badges
+        .split(",")
+        .map((b) => b.trim())
+        .filter(Boolean);
     }
 
-    // Update only fields provided (keep previous values for fields not provided)
-    if (typeof title !== "undefined") product.title = title || product.title;
+    // ---------------- UPDATE FIELDS (ONLY IF PROVIDED) ----------------
+    if (typeof title !== "undefined") product.title = title;
     if (typeof description !== "undefined")
-      product.description = description || product.description;
+      product.description = description;
 
-    if (parsedNutritionObj.present) {
-      product.nutrition = parsedNutritionObj.value || {};
-    }
+    if (parsedNutrition !== undefined)
+      product.nutrition = parsedNutrition || {};
 
-    if (parsedDetailsObj.present) {
-      product.details = parsedDetailsObj.value || {};
-    }
+    if (parsedDetails !== undefined)
+      product.details = parsedDetails || {};
 
-    if (typeof rating !== "undefined") product.rating = Number(rating) || 0;
+    if (typeof rating !== "undefined")
+      product.rating = Number(rating) || 0;
+
     if (typeof reviewsCount !== "undefined")
       product.reviewsCount = Number(reviewsCount) || 0;
 
-    if (typeof finalBadges !== "undefined") product.badges = finalBadges;
-    if (typeof view360 !== "undefined") product.view360 = view360 || product.view360;
+    if (typeof finalBadges !== "undefined")
+      product.badges = finalBadges;
 
-    // If normalizedVariants was prepared (i.e., variants provided), set it; otherwise keep existing
-    if (typeof normalizedVariants !== "undefined") {
+    if (typeof view360 !== "undefined")
+      product.view360 = view360 || "";
+
+    if (normalizedVariants !== undefined)
       product.variants = normalizedVariants;
-    }
 
-    if (typeof normalizedCustomBoxPrices !== "undefined") {
+    if (normalizedCustomBoxPrices !== undefined)
       product.customBoxPrices = normalizedCustomBoxPrices;
-    }
 
-    // Update product-level price/stock if provided
-    if (typeof productPrice !== "undefined") product.price = Number(productPrice) || 0;
-    if (typeof productSalesPrice !== "undefined")
-      product.salesPrice = Number(productSalesPrice) || 0;
-    if (typeof productStock !== "undefined") product.stock = Number(productStock) || 0;
+    if (typeof price !== "undefined")
+      product.price = Number(price) || 0;
 
-    // Images
+    if (typeof salesPrice !== "undefined")
+      product.salesPrice = Number(salesPrice) || 0;
+
+    if (typeof stock !== "undefined")
+      product.stock = Number(stock) || 0;
+
+    // ---------------- IMAGES ----------------
     product.image = mainImage;
     product.images = galleryImages;
 
@@ -313,7 +303,7 @@ export const editProduct = async (req, res) => {
       product,
     });
   } catch (error) {
-    console.error("Backend Error:", error);
+    console.error("Edit Product Error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to edit product",
