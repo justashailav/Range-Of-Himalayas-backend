@@ -102,6 +102,7 @@ export const addToCart = async (req, res) => {
 export const fetchCartItems = async (req, res) => {
   try {
     const { userId } = req.params;
+
     if (!userId) {
       return res.status(400).json({
         success: false,
@@ -114,8 +115,6 @@ export const fetchCartItems = async (req, res) => {
       select: "image title variants",
     });
 
-    console.log("Populated Cart:", JSON.stringify(cart, null, 2));
-
     if (!cart) {
       return res.status(404).json({
         success: false,
@@ -123,18 +122,15 @@ export const fetchCartItems = async (req, res) => {
       });
     }
 
-    // Remove invalid items
-    const validItems = cart.items.filter((productItem) => productItem.productId);
-    if (validItems.length < cart.items.length) {
-      cart.items = validItems;
-      await cart.save();
-    }
+    const validItems = cart.items.filter((item) => item.productId);
 
     const populatedCartItems = validItems.map((item) => {
       const product = item.productId;
 
       const variantObj = product.variants?.find(
-        (v) => v.size === item.size && v.weight === item.weight
+        (v) =>
+          (v.size || "") === (item.size || "") &&
+          v.weight === item.weight
       );
 
       return {
@@ -144,7 +140,7 @@ export const fetchCartItems = async (req, res) => {
         price: variantObj?.price ?? 0,
         salesPrice: variantObj?.salesPrice ?? 0,
         quantity: item.quantity,
-        size: item.size,
+        size: item.size || "",
         weight: item.weight,
       };
     });
@@ -165,14 +161,14 @@ export const fetchCartItems = async (req, res) => {
   }
 };
 
+
 export const updateCartItemQty = async (req, res) => {
   try {
-    const { userId, productId, quantity, size, weight } = req.body;
+    let { userId, productId, quantity, size, weight } = req.body;
 
-    console.log("Request body:", { userId, productId, quantity, size, weight });
+    size = size || ""; // ✅ normalize
 
-    if (!userId || !productId || quantity <= 0 || !size || !weight) {
-      console.log("Invalid data provided!");
+    if (!userId || !productId || quantity <= 0 || !weight) {
       return res.status(400).json({
         success: false,
         message: "Invalid data provided!",
@@ -184,70 +180,47 @@ export const updateCartItemQty = async (req, res) => {
       select: "image title variants",
     });
 
-    console.log("Populated Cart:", JSON.stringify(cart, null, 2));
-
     if (!cart) {
-      console.log("Cart not found!");
       return res.status(404).json({
         success: false,
         message: "Cart not found!",
       });
     }
 
-    // Find the specific item by productId + size + weight
     const itemIndex = cart.items.findIndex(
-      (item) => {
-        const match =
-          item.productId?._id.toString() === productId &&
-          item.size === size &&
-          item.weight === weight;
-        if (!match) {
-          console.log("Item does not match:", {
-            itemProductId: item.productId?._id.toString(),
-            size: item.size,
-            weight: item.weight,
-          });
-        }
-        return match;
-      }
+      (item) =>
+        item.productId._id.toString() === productId &&
+        (item.size || "") === size &&
+        item.weight === weight
     );
 
     if (itemIndex === -1) {
-      console.log("Cart item not found!");
       return res.status(404).json({
         success: false,
         message: "Cart item not found!",
       });
     }
 
-    console.log("Updating item at index:", itemIndex, "with quantity:", quantity);
-
-    // Update quantity
     cart.items[itemIndex].quantity = quantity;
     await cart.save();
 
-    // Map items with variant pricing
     const populatedItems = cart.items.map((item) => {
       const product = item.productId;
-
-      // Find matching variant by size + weight
-      const variant = product.variants?.find(
-        (v) => v.size === item.size && v.weight === item.weight
+      const variant = product.variants.find(
+        (v) => (v.size || "") === (item.size || "") && v.weight === item.weight
       );
 
       return {
         productId: product._id,
-        image: product.image ?? null,
-        title: product.title ?? "Unnamed Product",
+        image: product.image,
+        title: product.title,
         price: variant?.price ?? 0,
         salesPrice: variant?.salesPrice ?? 0,
         quantity: item.quantity,
-        size: item.size,
+        size: item.size || "",
         weight: item.weight,
       };
     });
-
-    console.log("Updated Cart Items:", populatedItems);
 
     res.status(200).json({
       success: true,
@@ -257,7 +230,7 @@ export const updateCartItemQty = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Error in updateCartItemQty:", error);
+    console.error("updateCartItemQty error:", error);
     res.status(500).json({
       success: false,
       message: "Error updating cart item",
@@ -265,22 +238,15 @@ export const updateCartItemQty = async (req, res) => {
   }
 };
 
+
 export const deleteCartItem = async (req, res) => {
   try {
     const { userId, productId } = req.params;
     const { size, weight } = req.body;
 
-    if (!userId || !productId || !size || !weight) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid data provided!",
-      });
-    }
+    const normalizedSize = size || "";
 
-    const cart = await Cart.findOne({ userId }).populate({
-      path: "items.productId",
-      select: "image title variants",
-    });
+    const cart = await Cart.findOne({ userId });
 
     if (!cart) {
       return res.status(404).json({
@@ -291,57 +257,18 @@ export const deleteCartItem = async (req, res) => {
 
     cart.items = cart.items.filter(
       (item) =>
-        item.productId?._id.toString() !== productId ||
-        item.size !== size ||
-        item.weight !== weight
+        !(
+          item.productId.toString() === productId &&
+          (item.size || "") === normalizedSize &&
+          item.weight === weight
+        )
     );
 
     await cart.save();
 
-    // Repopulate to return updated cart
-    await cart.populate({
-      path: "items.productId",
-      select: "image title variants",
-    });
-
-    const populatedItems = cart.items.map((item) => {
-      const product = item.productId;
-
-      if (!product) {
-        return {
-          productId: null,
-          image: null,
-          title: "Product not found",
-          price: 0,
-          salesPrice: 0,
-          quantity: item.quantity,
-          size: item.size,
-          weight: item.weight,
-        };
-      }
-
-      const variant = product.variants?.find(
-        (v) => v.size === item.size && v.weight === item.weight
-      );
-
-      return {
-        productId: product._id,
-        image: product.image ?? null,
-        title: product.title ?? "Unnamed Product",
-        price: variant?.price ?? 0,
-        salesPrice: variant?.salesPrice ?? 0,
-        quantity: item.quantity,
-        size: item.size,
-        weight: item.weight,
-      };
-    });
-
     res.status(200).json({
       success: true,
-      data: {
-        ...cart._doc,
-        items: populatedItems,
-      },
+      message: "Item removed from cart",
     });
   } catch (error) {
     console.error(error);
@@ -351,6 +278,7 @@ export const deleteCartItem = async (req, res) => {
     });
   }
 };
+
 export const addBoxToCart = async (req, res) => {
   try {
     const { userId, id: boxId } = req.body;
