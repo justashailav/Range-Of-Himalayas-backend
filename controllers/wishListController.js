@@ -5,8 +5,8 @@ import { WishList } from "../models/wishListModel.js";
 export const addToWishList = async (req, res) => {
   try {
     const { userId, productId, size, weight } = req.body;
-
-    if (!userId || !productId || !size) {
+    const normalizedSize = size || "";
+    if (!userId || !productId) {
       return res.status(400).json({
         success: false,
         message: "Invalid data provided!",
@@ -29,7 +29,7 @@ export const addToWishList = async (req, res) => {
     const alreadyExists = wishList.items.some(
       (item) =>
         item.productId.toString() === productId.toString() &&
-        item.size === size &&
+        (item.size || "") === normalizedSize  &&
         (item.weight || "") === (weight || "")
     );
 
@@ -41,7 +41,7 @@ export const addToWishList = async (req, res) => {
     }
 
     // Add new unique variant
-    wishList.items.push({ productId, size, weight });
+    wishList.items.push({ productId, size:normalizedSize, weight });
     await wishList.save();
 
     res.status(200).json({
