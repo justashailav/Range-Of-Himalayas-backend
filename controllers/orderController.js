@@ -148,7 +148,9 @@ export const createOrder = async (req, res) => {
     // 5️⃣ Coupon validation
     let coupon = null;
     const formattedCode =
-      typeof code === "string" && code.trim() ? code.toUpperCase().trim() : null;
+      typeof code === "string" && code.trim()
+        ? code.toUpperCase().trim()
+        : null;
 
     if (formattedCode) {
       coupon = await Coupon.findOne({ code: formattedCode });
@@ -179,8 +181,6 @@ export const createOrder = async (req, res) => {
         });
       }
     }
-
-    // 6️⃣ Base order object (NO FREE GIFT)
     const orderData = {
       userId,
       cartItems,
@@ -197,52 +197,41 @@ export const createOrder = async (req, res) => {
     };
 
     // 7️⃣ RAZORPAY FLOW
-    if (paymentMethod === "razorpay") {
-      const razorpayOrder = await razorpay.orders.create({
-        amount: totalAmount * 100,
-        currency: "INR",
-        receipt: `receipt_${Date.now()}`,
-      });
+    // 7️⃣ RAZORPAY ORDER (FOR BOTH ONLINE & COD)
+    const COD_ADVANCE = 200;
 
-      const newOrder = await new Order({
-        ...orderData,
-        paymentStatus: "pending",
-        paymentId: razorpayOrder.id,
-      }).save();
+    const razorpayAmount = paymentMethod === "cod" ? COD_ADVANCE : totalAmount;
 
-      return res.status(201).json({
-        success: true,
-        message: "Order placed successfully with Razorpay.",
-        orderId: newOrder._id,
-        razorpayOrder,
-      });
-    }
+    const razorpayOrder = await razorpay.orders.create({
+      amount: razorpayAmount * 100, // paise
+      currency: "INR",
+      receipt: `receipt_${Date.now()}`,
+    });
 
-    // 8️⃣ COD FLOW (₹200 ADVANCE)
-    if (paymentMethod === "cod") {
-      const COD_ADVANCE = 200;
+    // 8️⃣ SAVE ORDER
+    const newOrder = await new Order({
+      ...orderData,
+      paymentStatus: "pending",
+      paymentId: razorpayOrder.id,
 
-      if (totalAmount < COD_ADVANCE) {
-        return res.status(400).json({
-          success: false,
-          message: "COD not available for this order amount.",
-        });
-      }
-
-      const newOrder = await new Order({
-        ...orderData,
-        paymentStatus: "partial_paid",
+      // COD-specific fields
+      ...(paymentMethod === "cod" && {
         codAdvanceAmount: COD_ADVANCE,
         codRemainingAmount: totalAmount - COD_ADVANCE,
-        codAdvancePaid: true,
-      }).save();
+        codAdvancePaid: false, // will be true after capturePayment
+      }),
+    }).save();
 
-      return res.status(201).json({
-        success: true,
-        message: "COD order placed successfully. ₹200 advance paid.",
-        orderId: newOrder._id,
-      });
-    }
+    // 9️⃣ RETURN RESPONSE (IMPORTANT)
+    return res.status(201).json({
+      success: true,
+      message:
+        paymentMethod === "cod"
+          ? "COD order created. ₹200 advance payment required."
+          : "Order created. Complete payment.",
+      orderId: newOrder._id,
+      razorpayOrder, // 🔥 REQUIRED
+    });
   } catch (error) {
     console.error("🔥 Order creation error:", error);
     return res.status(500).json({
@@ -316,9 +305,6 @@ async function sendOrderEmail(user, order, boxes) {
 }
 
 export const capturePayment = async (req, res) => {
-  console.log("🟢 capturePayment called");
-  console.log("📦 Request body:", req.body);
-
   try {
     const {
       razorpay_order_id,
@@ -327,7 +313,7 @@ export const capturePayment = async (req, res) => {
       orderId,
     } = req.body;
 
-    // 🔍 Step 1: Find Order
+    // 1️⃣ Find Order
     const order = await Order.findById(orderId);
     if (!order) {
       return res.status(404).json({
@@ -336,7 +322,15 @@ export const capturePayment = async (req, res) => {
       });
     }
 
-    // 🔐 Step 2: Verify Razorpay Signature (COMMON for both)
+    // 2️⃣ Match Razorpay order
+    if (order.paymentId !== razorpay_order_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Razorpay order mismatch",
+      });
+    }
+
+    // 3️⃣ Verify Signature
     const body = razorpay_order_id + "|" + razorpay_payment_id;
     const expectedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
@@ -346,102 +340,81 @@ export const capturePayment = async (req, res) => {
     if (expectedSignature !== razorpay_signature) {
       return res.status(400).json({
         success: false,
-        message: "Invalid Razorpay payment signature",
+        message: "Invalid Razorpay signature",
       });
     }
 
-    // 🚫 Prevent double capture
+    // 4️⃣ Prevent double payment
     if (
       order.paymentStatus === "paid" ||
       (order.paymentMethod === "cod" && order.codAdvancePaid)
     ) {
       return res.status(400).json({
         success: false,
-        message: "Payment already captured for this order",
+        message: "Payment already captured",
       });
     }
 
-    // 💳 CASE 1: FULL ONLINE PAYMENT
+    // 5️⃣ ONLINE PAYMENT
     if (order.paymentMethod === "razorpay") {
       order.paymentStatus = "paid";
-      order.paymentId = razorpay_payment_id;
+      order.paymentGatewayPaymentId = razorpay_payment_id;
       order.orderStatus = "confirmed";
 
-      order.statusHistory.push({
-        status: "confirmed",
-        updatedAt: new Date(),
-      });
-
-      // 📦 Reduce stock immediately
       await adjustStock(order.cartItems, "deduct");
     }
 
-    // 💵 CASE 2: COD ADVANCE PAYMENT (₹200)
+    // 6️⃣ COD ADVANCE PAYMENT
     if (order.paymentMethod === "cod") {
-      order.codAdvancePaid = true;
-      order.paymentId = razorpay_payment_id;
-
-      // 👇 IMPORTANT
       order.paymentStatus = "partial_paid";
+      order.codAdvancePaid = true;
+      order.paymentGatewayPaymentId = razorpay_payment_id;
 
-      order.statusHistory.push({
-        status: "confirmed",
-        updatedAt: new Date(),
-      });
-
-      // 📦 Reduce stock after advance
       await adjustStock(order.cartItems, "deduct");
     }
+
+    // 7️⃣ Update status history
+    order.statusHistory.push({
+      status: "confirmed",
+      updatedAt: new Date(),
+    });
 
     order.orderUpdateDate = new Date();
 
-    // 🎟️ Coupon usage (only once)
+    // 8️⃣ Coupon usage (ONCE)
     if (order.code) {
-      try {
-        const coupon = await Coupon.findById(order.code);
-        if (coupon) {
-          await updateCouponUsage(coupon.code, order.userId);
-        }
-      } catch (err) {
-        console.error("⚠️ Coupon update failed:", err.message);
-      }
+      await updateCouponUsage(order.code, order.userId);
     }
 
-    // 🗑️ Remove cart
+    // 9️⃣ Delete cart
     if (order.cartId) {
       await Cart.findByIdAndDelete(order.cartId);
     }
 
-    // 💾 Save Order
     await order.save();
 
-    // 📧 Email
-    try {
-      const user = await User.findById(order.userId);
-      if (user) {
-        await sendOrderEmail(user, order, order.boxes);
-      }
-    } catch (err) {
-      console.error("📧 Email failed:", err.message);
+    // 🔟 Email
+    const user = await User.findById(order.userId);
+    if (user) {
+      await sendOrderEmail(user, order, order.boxes);
     }
 
     return res.status(200).json({
       success: true,
       message:
         order.paymentMethod === "cod"
-          ? "COD advance payment captured successfully"
+          ? "₹200 COD advance paid successfully"
           : "Payment captured successfully",
-      data: order,
+      order,
     });
   } catch (error) {
-    console.error("💥 Payment capture error:", error);
+    console.error("❌ capturePayment error:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error",
     });
   }
 };
-
 
 
 export const getAllOrdersByUserId = async (req, res) => {
@@ -1369,7 +1342,6 @@ export const trackOrder = async (req, res) => {
     });
   }
 };
-
 
 export const getRecentOrders = async (req, res) => {
   try {
