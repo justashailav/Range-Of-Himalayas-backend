@@ -18,7 +18,18 @@ const orderSchema = new mongoose.Schema(
         size: String,
         weight: {
           type: String,
-          enum: ["1kg", "2kg", "3kg", "5kg", "10kg", "12kg", "15kg"],
+          enum: [
+            "250g",
+            "500g",
+            "750g",
+            "1kg",
+            "2kg",
+            "3kg",
+            "5kg",
+            "10kg",
+            "12kg",
+            "15kg",
+          ],
           required: true,
         },
       },
@@ -64,7 +75,7 @@ const orderSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ["razorpay"],
+      enum: ["razorpay","cod"],
       required: true,
     },
     paymentStatus: {
@@ -75,6 +86,20 @@ const orderSchema = new mongoose.Schema(
     totalAmount: {
       type: Number,
       required: true,
+    },
+    codAdvanceAmount: {
+      type: Number,
+      default: 0, 
+    },
+
+    codRemainingAmount: {
+      type: Number,
+      default: 0,
+    },
+
+    codAdvancePaid: {
+      type: Boolean,
+      default: false,
     },
     orderDate: {
       type: Date,
@@ -188,12 +213,7 @@ const orderSchema = new mongoose.Schema(
     refundAmount: {
       type: Number,
       default: 0,
-    },
-    freeGift: {
-      name: { type: String },
-      quantity: { type: Number, default: 0 },
-      price: { type: Number, default: 0 },
-    },
+    }
   },
   { timestamps: true }
 );
