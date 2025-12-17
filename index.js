@@ -73,7 +73,7 @@ app.use("/api/v1/user/custom-box", customBoxRoute);
 app.use("/api/v1/order", orderRoute);
 app.use("/api/v1/review", reviewRoute);
 app.use("/api/v1/admin", dashboardRoute);
-app.use("/api/v1/user", searchRoute);
+app.use("/api/v1/products", searchRoute);
 app.use("/api/v1/user", contactRoute);
 app.use("/api/v1/gallery", galleryRoute);
 app.use("/api/v1/blog", blogRoute);
