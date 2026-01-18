@@ -1,9 +1,6 @@
 export const sendToken = (user, statusCode, message, res) => {
   const token = user.generateToken();
 
-  // Debug logs to verify environment values
-  console.log("🧠 [sendToken] Sending cookie with token:", token.slice(0, 20) + "...");
-  console.log("🧠 [sendToken] NODE_ENV:", process.env.NODE_ENV);
 
   res
     .status(statusCode)

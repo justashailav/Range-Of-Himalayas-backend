@@ -166,15 +166,18 @@ export const updateCartItemQty = async (req, res) => {
   try {
     let { userId, productId, quantity, size, weight } = req.body;
 
-    size = size || ""; // ✅ normalize
+    // Normalize optional fields
+    size = size || "";
 
-    if (!userId || !productId || quantity <= 0 || !weight) {
+    // -------------------- VALIDATION --------------------
+    if (!userId || !productId || typeof quantity !== "number" || !weight) {
       return res.status(400).json({
         success: false,
         message: "Invalid data provided!",
       });
     }
 
+    // -------------------- FETCH CART --------------------
     const cart = await Cart.findOne({ userId }).populate({
       path: "items.productId",
       select: "image title variants",
@@ -187,8 +190,14 @@ export const updateCartItemQty = async (req, res) => {
       });
     }
 
+    // -------------------- CLEAN BROKEN ITEMS (IMPORTANT) --------------------
+    // If a product was deleted, populate returns productId = null
+    cart.items = cart.items.filter((item) => item.productId);
+
+    // -------------------- FIND CART ITEM SAFELY --------------------
     const itemIndex = cart.items.findIndex(
       (item) =>
+        item.productId && // ✅ NULL GUARD (CRITICAL)
         item.productId._id.toString() === productId &&
         (item.size || "") === size &&
         item.weight === weight
@@ -201,13 +210,23 @@ export const updateCartItemQty = async (req, res) => {
       });
     }
 
-    cart.items[itemIndex].quantity = quantity;
+    // -------------------- UPDATE / REMOVE --------------------
+    if (quantity <= 0) {
+      cart.items.splice(itemIndex, 1);
+    } else {
+      cart.items[itemIndex].quantity = quantity;
+    }
+
     await cart.save();
 
+    // -------------------- PREPARE RESPONSE --------------------
     const populatedItems = cart.items.map((item) => {
       const product = item.productId;
-      const variant = product.variants.find(
-        (v) => (v.size || "") === (item.size || "") && v.weight === item.weight
+
+      const variant = product.variants?.find(
+        (v) =>
+          (v.size || "") === (item.size || "") &&
+          v.weight === item.weight
       );
 
       return {
@@ -222,6 +241,7 @@ export const updateCartItemQty = async (req, res) => {
       };
     });
 
+    // -------------------- SUCCESS RESPONSE --------------------
     res.status(200).json({
       success: true,
       data: {

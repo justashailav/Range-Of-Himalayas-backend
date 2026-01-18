@@ -21,10 +21,6 @@
 //   }
 // };
 import { Resend } from "resend";
-
-// DEBUG: Print the exact RESEND_FROM value from environment
-console.log("FROM VALUE JSON =", JSON.stringify(process.env.RESEND_FROM));
-
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const sendEmail = async ({ email, subject, message, attachments }) => {
