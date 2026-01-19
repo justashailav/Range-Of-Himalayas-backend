@@ -23,7 +23,7 @@ import searchRoute from "./routes/serachRoute.js";
 import contactRoute from "./routes/contactRoute.js";
 import galleryRoute from "./routes/galleryRoute.js";
 import blogRoute from "./routes/blogRoutes.js";
-
+import chatRoute from "./routes/chatRoute.js"
 const app = express();
 dotenv.config();
 
@@ -77,7 +77,7 @@ app.use("/api/v1/products", searchRoute);
 app.use("/api/v1/user", contactRoute);
 app.use("/api/v1/gallery", galleryRoute);
 app.use("/api/v1/blog", blogRoute);
-
+app.use("/api/v1/chat",chatRoute)
 
 // ---------- Server & Socket.io ----------
 const server = http.createServer(app);
