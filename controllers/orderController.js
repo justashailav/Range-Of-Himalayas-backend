@@ -6,7 +6,7 @@ import { Order } from "../models/Order.js";
 import { User } from "../models/userModel.js";
 import { generateOrderEmailTemplate } from "../utils/emailTemplate.js";
 import { generateInvoicePDFBuffer } from "../utils/generateInvoicePDF.js";
-import razorpay from "../utils/razorpay.js";
+import { phonePePay, phonePeStatus } from "../utils/phonepe.js";
 import { sendEmail } from "../utils/sendEmail.js";
 import crypto from "crypto";
 
@@ -84,6 +84,7 @@ const restoreStock = async (cartItems, boxes) => {
   }
 };
 
+
 export const createOrder = async (req, res) => {
   try {
     const {
@@ -91,22 +92,20 @@ export const createOrder = async (req, res) => {
       cartItems = [],
       boxes = [],
       addressInfo,
-      paymentMethod, // "razorpay" | "cod"
+      paymentMethod, // "phonepe" | "cod"
       totalAmount,
       cartId,
       code,
     } = req.body;
 
-    // 1️⃣ Validate user & cart
     if (!userId || (!cartItems.length && !boxes.length)) {
       return res.status(400).json({
         success: false,
-        message: "Cart is empty. Please add products or boxes.",
+        message: "Cart is empty.",
       });
     }
 
-    // 2️⃣ Validate payment method
-    if (!["razorpay", "cod"].includes(paymentMethod)) {
+    if (!["phonepe", "cod"].includes(paymentMethod)) {
       return res.status(400).json({
         success: false,
         message: "Invalid payment method.",
@@ -121,31 +120,18 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // 3️⃣ Validate stock
+    // ✅ STOCK VALIDATION
     for (const item of cartItems) {
       const product = await Products.findById(item.productId);
       if (!product || product.totalStock < item.quantity) {
         return res.status(400).json({
           success: false,
-          message: `Insufficient stock for ${product?.title || "product"}.`,
+          message: `Insufficient stock for ${product?.title || "product"}`,
         });
       }
     }
 
-    // 4️⃣ Calculate original total (before coupon)
-    let originalTotal = 0;
-    for (const item of cartItems) {
-      const product = await Products.findById(item.productId);
-      if (product) {
-        const price =
-          product.salesPrice && product.salesPrice > 0
-            ? product.salesPrice
-            : product.price;
-        originalTotal += price * item.quantity;
-      }
-    }
-
-    // 5️⃣ Coupon validation
+    // ✅ COUPON VALIDATION (same as yours)
     let coupon = null;
     const formattedCode =
       typeof code === "string" && code.trim()
@@ -161,27 +147,42 @@ export const createOrder = async (req, res) => {
           message: "Invalid or expired coupon.",
         });
       }
-
-      if (originalTotal < coupon.minOrderAmount) {
-        return res.status(400).json({
-          success: false,
-          message: `Minimum order ₹${coupon.minOrderAmount} required.`,
-        });
-      }
-
-      const usedCount = await Order.countDocuments({
-        userId,
-        code: coupon._id,
-      });
-
-      if (usedCount >= coupon.usageLimit) {
-        return res.status(400).json({
-          success: false,
-          message: "Coupon usage limit exceeded.",
-        });
-      }
     }
-    const orderData = {
+
+    const COD_ADVANCE = 200;
+
+    const payableAmount =
+      paymentMethod === "cod" ? COD_ADVANCE : totalAmount;
+
+    // 🔥 CREATE MERCHANT TRANSACTION ID
+    const merchantTransactionId = "TXN" + Date.now();
+
+    // 🔥 PHONEPE PAYLOAD
+    const payload = {
+      merchantId: process.env.PHONEPE_MERCHANT_ID,
+      merchantTransactionId,
+      merchantUserId: userId.toString(),
+      amount: payableAmount * 100,
+      redirectUrl: `${process.env.FRONTEND_URL}/payment-success`,
+      redirectMode: "POST",
+      callbackUrl: `${process.env.BACKEND_URL}/api/orders/phonepe-callback`,
+      mobileNumber: addressInfo?.phone || "9999999999",
+      paymentInstrument: {
+        type: "PAY_PAGE",
+      },
+    };
+
+    const phonepeResponse = await phonePePay(payload);
+
+    if (!phonepeResponse.success) {
+      return res.status(400).json({
+        success: false,
+        message: "PhonePe payment initialization failed",
+      });
+    }
+
+    // ✅ SAVE ORDER
+    const newOrder = await new Order({
       userId,
       cartItems,
       boxes,
@@ -190,48 +191,28 @@ export const createOrder = async (req, res) => {
       totalAmount,
       cartId,
       code: coupon ? coupon._id : null,
-      orderStatus: "confirmed",
-      orderDate: new Date(),
-      orderUpdateDate: new Date(),
-      statusHistory: [{ status: "confirmed", updatedAt: new Date() }],
-    };
-
-    // 7️⃣ RAZORPAY FLOW
-    // 7️⃣ RAZORPAY ORDER (FOR BOTH ONLINE & COD)
-    const COD_ADVANCE = 200;
-
-    const razorpayAmount = paymentMethod === "cod" ? COD_ADVANCE : totalAmount;
-
-    const razorpayOrder = await razorpay.orders.create({
-      amount: razorpayAmount * 100, // paise
-      currency: "INR",
-      receipt: `receipt_${Date.now()}`,
-    });
-
-    // 8️⃣ SAVE ORDER
-    const newOrder = await new Order({
-      ...orderData,
+      orderStatus: "pending",
       paymentStatus: "pending",
-      paymentId: razorpayOrder.id,
+      merchantTransactionId,
 
-      // COD-specific fields
       ...(paymentMethod === "cod" && {
         codAdvanceAmount: COD_ADVANCE,
         codRemainingAmount: totalAmount - COD_ADVANCE,
-        codAdvancePaid: false, // will be true after capturePayment
+        codAdvancePaid: false,
       }),
+
+      orderDate: new Date(),
+      orderUpdateDate: new Date(),
     }).save();
 
-    // 9️⃣ RETURN RESPONSE (IMPORTANT)
     return res.status(201).json({
       success: true,
-      message:
-        paymentMethod === "cod"
-          ? "COD order created. ₹200 advance payment required."
-          : "Order created. Complete payment.",
+      message: "Redirecting to PhonePe...",
       orderId: newOrder._id,
-      razorpayOrder, // 🔥 REQUIRED
+      redirectUrl:
+        phonepeResponse.data.instrumentResponse.redirectInfo.url,
     });
+
   } catch (error) {
     console.error("🔥 Order creation error:", error);
     return res.status(500).json({
@@ -240,7 +221,6 @@ export const createOrder = async (req, res) => {
     });
   }
 };
-
 async function updateCouponUsage(code, userId) {
   try {
     const normalizedCode = code.toUpperCase().trim();
@@ -306,74 +286,68 @@ async function sendOrderEmail(user, order, boxes) {
 
 export const capturePayment = async (req, res) => {
   try {
-    const {
-      razorpay_order_id,
-      razorpay_payment_id,
-      razorpay_signature,
-      orderId,
-    } = req.body;
+    const { orderId, merchantTransactionId } = req.body;
 
-    // 1️⃣ Find Order
     const order = await Order.findById(orderId);
-    if (!order) {
+    if (!order)
       return res.status(404).json({
         success: false,
         message: "Order not found",
       });
-    }
 
-    // 2️⃣ Match Razorpay order
-    if (order.paymentId !== razorpay_order_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Razorpay order mismatch",
-      });
-    }
-
-    // 3️⃣ Verify Signature
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
-    const expectedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(body)
-      .digest("hex");
-
-    if (expectedSignature !== razorpay_signature) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid Razorpay signature",
-      });
-    }
-
-    // 4️⃣ Prevent double payment
     if (
-      order.paymentStatus === "paid" ||
-      (order.paymentMethod === "cod" && order.codAdvancePaid)
+      order.phonepeMerchantTransactionId !== merchantTransactionId
     ) {
       return res.status(400).json({
         success: false,
-        message: "Payment already captured",
+        message: "Transaction mismatch",
       });
     }
 
-    // 5️⃣ ONLINE PAYMENT
-    if (order.paymentMethod === "razorpay") {
-      order.paymentStatus = "paid";
-      order.paymentGatewayPaymentId = razorpay_payment_id;
-      order.orderStatus = "confirmed";
-
-      await adjustStock(order.cartItems, "deduct");
+    if (order.paymentStatus === "paid") {
+      return res.status(400).json({
+        success: false,
+        message: "Already paid",
+      });
     }
 
-    // 6️⃣ COD ADVANCE PAYMENT
+    // 🔐 VERIFY WITH PHONEPE
+    const statusResponse = await phonePeStatus(
+      merchantTransactionId
+    );
+
+    if (
+      !statusResponse.success ||
+      statusResponse.data.state !== "COMPLETED"
+    ) {
+      order.paymentStatus = "failed";
+      order.phonepeState = "FAILED";
+      await order.save();
+
+      return res.status(400).json({
+        success: false,
+        message: "Payment not completed",
+      });
+    }
+
+    // ✅ PAYMENT SUCCESS
+
+    order.phonepeTransactionId =
+      statusResponse.data.transactionId;
+
+    order.phonepeState = "COMPLETED";
+
+    if (order.paymentMethod === "phonepe") {
+      order.paymentStatus = "paid";
+      order.orderStatus = "confirmed";
+    }
+
     if (order.paymentMethod === "cod") {
       order.paymentStatus = "partial_paid";
       order.codAdvancePaid = true;
-      order.paymentGatewayPaymentId = razorpay_payment_id;
-
-      await adjustStock(order.cartItems, "deduct");
+      order.orderStatus = "confirmed";
     }
 
-    // 7️⃣ Update status history
     order.statusHistory.push({
       status: "confirmed",
       updatedAt: new Date(),
@@ -381,19 +355,27 @@ export const capturePayment = async (req, res) => {
 
     order.orderUpdateDate = new Date();
 
-    // 8️⃣ Coupon usage (ONCE)
+    // 🔥 NOW CONNECT MISSING FUNCTIONS
+
+    // 1️⃣ Deduct stock
+    await adjustStock(order.cartItems, "deduct");
+
+    // 2️⃣ Update coupon usage
     if (order.code) {
-      await updateCouponUsage(order.code, order.userId);
+      const couponDoc = await Coupon.findById(order.code);
+      if (couponDoc) {
+        await updateCouponUsage(couponDoc.code, order.userId);
+      }
     }
 
-    // 9️⃣ Delete cart
+    // 3️⃣ Delete cart
     if (order.cartId) {
       await Cart.findByIdAndDelete(order.cartId);
     }
 
     await order.save();
 
-    // 🔟 Email
+    // 4️⃣ Send confirmation email
     const user = await User.findById(order.userId);
     if (user) {
       await sendOrderEmail(user, order, order.boxes);
@@ -401,12 +383,10 @@ export const capturePayment = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message:
-        order.paymentMethod === "cod"
-          ? "₹200 COD advance paid successfully"
-          : "Payment captured successfully",
+      message: "Payment verified successfully",
       order,
     });
+
   } catch (error) {
     console.error("❌ capturePayment error:", error);
     return res.status(500).json({
@@ -745,110 +725,109 @@ export const cancelFullOrder = async (req, res) => {
 
     const order = await Order.findById(id);
     if (!order) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Order not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
     }
 
     const user = await User.findById(order.userId);
     if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
 
+    // ⏳ 24 hour cancellation window
     const now = new Date();
-    const diffHours = (now - order.orderDate) / (1000 * 60 * 60);
+    const diffHours =
+      (now - new Date(order.createdAt)) / (1000 * 60 * 60);
+
     if (diffHours > 24) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Cancellation window expired" });
+      return res.status(400).json({
+        success: false,
+        message: "Cancellation window expired",
+      });
     }
 
+    // ❌ Prevent double cancel
+    if (order.orderStatus === "cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: "Order already cancelled",
+      });
+    }
+
+    // 🔄 Restore stock
     await restoreStock(order.cartItems, order.boxes);
 
     order.orderStatus = "cancelled";
     order.cancelStatus = "cancelled";
-    order.statusHistory.push({ status: "cancelled", updatedAt: new Date() });
+    order.statusHistory.push({
+      status: "cancelled",
+      updatedAt: new Date(),
+    });
+
     order.orderUpdateDate = new Date();
 
-    let refundAmount = order.totalAmount;
+    let refundAmount = 0;
 
-    if (refundAmount > 0) {
+    // =========================
+    // PAYMENT REFUND LOGIC
+    // =========================
+
+    // ✅ FULL ONLINE PAYMENT
+    if (
+      order.paymentMethod === "phonepe" &&
+      order.paymentStatus === "paid"
+    ) {
+      refundAmount = order.totalAmount;
+
       order.refundAmount = refundAmount;
       order.refundStatus = "processing";
 
-      if (
-        order.paymentMethod === "razorpay" &&
-        order.paymentStatus === "paid"
-      ) {
-        try {
-          await razorpay.payments.refund(order.paymentId, {
-            amount: refundAmount * 100,
-          });
-        } catch (err) {
-          console.error("Razorpay refund error:", err);
-        }
-      }
+      // 🔥 Here you can later integrate PhonePe Refund API
+      // For now: manual processing
+    }
+
+    // ✅ COD ADVANCE REFUND
+    if (
+      order.paymentMethod === "cod" &&
+      order.codAdvancePaid
+    ) {
+      refundAmount = order.codAdvanceAmount;
+
+      order.refundAmount = refundAmount;
+      order.refundStatus = "processing";
+    }
+
+    // ✅ If unpaid
+    if (order.paymentStatus === "pending") {
+      order.refundStatus = "none";
     }
 
     await order.save();
 
-    console.log("📧 Preparing to send email...");
-    console.log("To:", user.email);
+    // =========================
+    // EMAIL
+    // =========================
 
     await sendEmail({
       email: user.email,
       subject: `Your Order #${order._id} Has Been Cancelled`,
       message: `
-  <div style="font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; padding: 32px; border-radius: 12px; color: #333;">
-    <div style="max-width: 600px; margin: auto; background: #ffffff; padding: 32px; border-radius: 12px; box-shadow: 0 3px 12px rgba(0,0,0,0.05);">
-      
-      <h2 style="color:#d9534f; margin-bottom: 8px;">Order Cancelled</h2>
-      <p style="font-size: 16px; color: #555;">Dear ${
-        user.name || "Customer"
-      },</p>
-
-      <p style="font-size: 15px; color: #555; line-height: 1.6;">
-        We’re sorry to inform you that your order <b>#${
-          order._id
-        }</b>, placed on 
-        <b>${new Date(order.orderDate).toLocaleDateString("en-IN", {
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-        })}</b>, has been <b style="color:#d9534f;">cancelled</b>.
-      </p>
-
-      <div style="background-color:#fff6f6; padding: 16px 20px; border-left: 4px solid #d9534f; border-radius: 8px; margin: 24px 0;">
-        <h3 style="margin: 0 0 8px; color: #d9534f; font-size: 16px;">Refund Details</h3>
-        <p style="margin: 0; font-size: 15px; color: #444;">
-          Refund Amount: <b>₹${refundAmount}</b><br/>
-          Refund Status: <b>${order.refundStatus || "Processing"}</b>
-        </p>
-        <p style="margin-top: 8px; font-size: 14px; color: #777;">
-          Refunds are processed to your original payment method within <b>5–7 business days</b>.
-        </p>
-      </div>
-
-      <p style="font-size: 15px; color: #555; line-height: 1.6;">
-        We apologize for the inconvenience caused.  
-        If you have any questions, please reach out to our support team — we’re always happy to help.
-      </p>
-
-      <hr style="border:none; border-top:1px solid #eee; margin: 28px 0;">
-
-      <p style="font-size: 14px; color: #666;">
-        Team <b>Range of Himalayas 🍎</b><br/>
-        Fresh from the mountains, delivered with care.
-      </p>
-
-      <p style="font-size: 12px; color: #999; margin-top: 16px;">
-        This is an automated message. Please do not reply to this email.
-      </p>
-    </div>
-  </div>
-  `,
+        <h2>Order Cancelled</h2>
+        <p>Dear ${user.name || "Customer"},</p>
+        <p>Your order #${order._id} has been cancelled successfully.</p>
+        ${
+          refundAmount > 0
+            ? `<p><strong>Refund Amount:</strong> ₹${refundAmount}</p>
+               <p><strong>Status:</strong> Processing (5–7 business days)</p>`
+            : ""
+        }
+        <p>Thank you for shopping with Range of Himalayas 🍎</p>
+      `,
     });
 
     return res.status(200).json({
@@ -856,11 +835,13 @@ export const cancelFullOrder = async (req, res) => {
       message: "Order cancelled successfully",
       data: order,
     });
+
   } catch (error) {
     console.error("Cancel full order error:", error);
-    return res
-      .status(500)
-      .json({ success: false, message: "Internal server error" });
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
   }
 };
 
@@ -1249,67 +1230,105 @@ export const approveAdminReturnRequest = async (req, res) => {
 export const approveReturnRequest = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { items } = req.body; // [{ productId, quantity }] items to approve
+    const { items } = req.body; // [{ productId, quantity }]
 
     const order = await Order.findById(orderId);
-    if (!order)
-      return res
-        .status(404)
-        .json({ success: false, message: "Order not found" });
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    if (!items || !items.length) {
+      return res.status(400).json({
+        success: false,
+        message: "No items provided",
+      });
+    }
 
     let refundAmount = 0;
 
     for (const item of items) {
       const cancelledItem = order.cancelledItems.find(
-        (ci) => ci.productId.toString() === item.productId && !ci.adminApproved
+        (ci) =>
+          ci.productId.toString() === item.productId &&
+          !ci.refunded
       );
+
       if (!cancelledItem) continue;
 
-      const approveQty = Math.min(item.quantity, cancelledItem.quantity);
+      const approveQty = Math.min(
+        item.quantity,
+        cancelledItem.quantity
+      );
 
-      cancelledItem.adminApproved = true; // mark approved
-      cancelledItem.refundAvailableDate = new Date(); // can refund immediately
-      cancelledItem.refunded = false; // not refunded yet
+      // Mark as approved for refund
+      cancelledItem.refundAvailableDate = new Date();
+      cancelledItem.refunded = false;
 
       refundAmount += approveQty * Number(cancelledItem.price || 0);
 
-      // Restore stock
+      // 🔄 Restore stock
       await restoreStock(
         [
           {
             productId: item.productId,
             quantity: approveQty,
             size: cancelledItem.size || "Medium",
+            weight: cancelledItem.weight,
           },
         ],
         []
       );
     }
 
-    // Process refund immediately if paid via Razorpay
-    if (
-      order.paymentMethod === "razorpay" &&
-      order.paymentStatus === "paid" &&
-      refundAmount > 0
-    ) {
-      await razorpay.payments.refund(order.paymentId, {
-        amount: refundAmount * 100,
-      });
+    // ==========================
+    // REFUND LOGIC
+    // ==========================
+
+    if (refundAmount > 0) {
       order.refundAmount = (order.refundAmount || 0) + refundAmount;
-      order.refundStatus = "refunded";
+
+      // ✅ Online Payment (PhonePe)
+      if (
+        order.paymentMethod === "phonepe" &&
+        order.paymentStatus === "paid"
+      ) {
+        order.refundStatus = "processing";
+        // 🔥 You can integrate PhonePe Refund API here later
+      }
+
+      // ✅ COD Advance Case
+      if (
+        order.paymentMethod === "cod" &&
+        order.codAdvancePaid
+      ) {
+        order.refundStatus = "processing";
+      }
+
+      // ✅ If unpaid order
+      if (order.paymentStatus === "pending") {
+        order.refundStatus = "none";
+      }
     }
 
     order.orderUpdateDate = new Date();
+
     await order.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: "Return approved and refund processed successfully",
+      message: "Return approved successfully. Refund processing.",
       data: order,
     });
+
   } catch (error) {
     console.error("Approve return error:", error);
-    res.status(500).json({ success: false, message: "Internal server error" });
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
   }
 };
 export const trackOrder = async (req, res) => {

@@ -6,7 +6,9 @@ const orderSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+
     cartId: String,
+
     cartItems: [
       {
         productId: String,
@@ -34,17 +36,14 @@ const orderSchema = new mongoose.Schema(
         },
       },
     ],
+
     boxes: [
       {
         boxId: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "CustomBox",
-          required: false,
         },
-        boxName: {
-          type: String,
-          required: false,
-        },
+        boxName: String,
         items: [
           {
             productId: {
@@ -65,6 +64,7 @@ const orderSchema = new mongoose.Schema(
         ],
       },
     ],
+
     addressInfo: {
       addressId: String,
       address: String,
@@ -73,23 +73,50 @@ const orderSchema = new mongoose.Schema(
       phone: String,
       notes: String,
     },
+
+    /* ✅ PAYMENT */
     paymentMethod: {
       type: String,
-      enum: ["razorpay","cod"],
+      enum: ["phonepe", "cod"],
       required: true,
     },
+
+    paymentGateway: {
+      type: String,
+      default: "phonepe",
+    },
+
     paymentStatus: {
       type: String,
-      enum: ["pending","partial_paid", "paid", "failed"],
+      enum: ["pending", "partial_paid", "paid", "failed"],
       default: "pending",
     },
+
     totalAmount: {
       type: Number,
       required: true,
     },
+
+    /* ✅ PhonePe Fields */
+    phonepeMerchantTransactionId: {
+      type: String,
+      index: true,
+    },
+
+    phonepeTransactionId: {
+      type: String,
+    },
+
+    phonepeState: {
+      type: String,
+      enum: ["PENDING", "COMPLETED", "FAILED"],
+      default: "PENDING",
+    },
+
+    /* ✅ COD Fields */
     codAdvanceAmount: {
       type: Number,
-      default: 0, 
+      default: 0,
     },
 
     codRemainingAmount: {
@@ -101,25 +128,17 @@ const orderSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    orderDate: {
-      type: Date,
-      default: Date.now,
-    },
-    orderUpdateDate: {
-      type: Date,
-      default: Date.now,
-    },
-    paymentId: String,
-    razorpaySignature: String,
-    payerId: String,
 
     code: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Coupon",
     },
+
+    /* ✅ ORDER STATUS */
     orderStatus: {
       type: String,
       enum: [
+        "pending",
         "confirmed",
         "partially_cancelled",
         "packed",
@@ -129,24 +148,13 @@ const orderSchema = new mongoose.Schema(
         "rejected",
         "cancelled",
       ],
-      default: "confirmed",
+      default: "pending",
     },
 
     statusHistory: [
       {
         status: {
           type: String,
-          enum: [
-            "confirmed",
-            "partially_cancelled",
-            "packed",
-            "shipped",
-            "out_for_delivery",
-            "delivered",
-            "rejected",
-            "cancelled",
-          ],
-          required: true,
         },
         updatedAt: {
           type: Date,
@@ -154,45 +162,53 @@ const orderSchema = new mongoose.Schema(
         },
       },
     ],
+
+    /* ✅ CANCELLATION */
     cancelStatus: {
       type: String,
       enum: ["none", "requested", "cancelled"],
       default: "none",
     },
+
     cancellationReason: String,
+
     cancelledItems: [
       {
-        productId: { type: mongoose.Schema.Types.ObjectId, ref: "Products" },
-        quantity: { type: Number, required: true },
-        price: { type: Number, required: true },
+        productId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Products",
+        },
+        quantity: Number,
+        price: Number,
         reason: String,
-        cancelledAt: { type: Date, default: Date.now },
+        cancelledAt: {
+          type: Date,
+          default: Date.now,
+        },
         refundAvailableDate: {
           type: Date,
-          default: function () {
-            return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-          },
+          default: () =>
+            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
-        refunded: { type: Boolean, default: false },
+        refunded: {
+          type: Boolean,
+          default: false,
+        },
       },
     ],
+
+    /* ✅ RETURNS */
     returnRequests: [
       {
-        reason: {
-          type: String,
-          required: true,
-        },
-        photos: [{ type: String }],
-        videos: [{ type: String }],
+        reason: String,
+        photos: [String],
+        videos: [String],
         status: {
           type: String,
           enum: ["requested", "approved", "rejected", "refunded"],
           default: "requested",
         },
-        refundAmount: {
-          type: Number,
-          default: 0,
-        },
+        refundAmount: Number,
         requestedAt: {
           type: Date,
           default: Date.now,
@@ -200,20 +216,23 @@ const orderSchema = new mongoose.Schema(
         reviewedAt: Date,
       },
     ],
+
     returnStatus: {
       type: String,
       enum: ["none", "requested", "approved", "rejected", "refunded"],
       default: "none",
     },
+
     refundStatus: {
       type: String,
       enum: ["none", "processing", "refunded", "rejected", "manual"],
       default: "none",
     },
+
     refundAmount: {
       type: Number,
       default: 0,
-    }
+    },
   },
   { timestamps: true }
 );
