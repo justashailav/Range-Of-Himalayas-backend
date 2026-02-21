@@ -164,13 +164,22 @@ export const createOrder = async (req, res) => {
       merchantUserId: userId.toString(),
       amount: payableAmount * 100,
       redirectUrl: `${process.env.FRONTEND_URL}/payment-success`,
-      redirectMode: "POST",
+      redirectMode: "REDIRECT",
       callbackUrl: `${process.env.BACKEND_URL}/api/orders/phonepe-callback`,
       mobileNumber: addressInfo?.phone || "9999999999",
       paymentInstrument: {
         type: "PAY_PAGE",
       },
     };
+    console.log("===== PHONEPE DEBUG START =====");
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("Merchant ID (env):", process.env.PHONEPE_MERCHANT_ID);
+console.log("Salt Index:", process.env.PHONEPE_SALT_INDEX);
+console.log("Salt Key exists?:", !!process.env.PHONEPE_SALT_KEY);
+console.log("Merchant ID (payload):", payload.merchantId);
+console.log("Amount (paise):", payload.amount);
+console.log("Callback URL:", payload.callbackUrl);
+console.log("===== PHONEPE DEBUG END =====");
 
     const phonepeResponse = await phonePePay(payload);
 
