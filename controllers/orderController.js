@@ -159,12 +159,11 @@ export const createOrder = async (req, res) => {
 
     // 🔥 PHONEPE PAYLOAD
     const payload = {
-  merchantId: process.env.PHONEPE_MERCHANT_ID,
   merchantTransactionId,
   merchantUserId: userId.toString(),
   amount: payableAmount * 100,
   redirectUrl: `${process.env.FRONTEND_URL}/payment-success`,
-  redirectMode: "POST", // ✅ change here
+  redirectMode: "POST",
   callbackUrl:
     "https://range-of-himalayas-backend.onrender.com/api/orders/phonepe-callback",
   mobileNumber: addressInfo?.phone || "9999999999",
