@@ -2,7 +2,8 @@ import axios from "axios";
 import qs from "qs";
 
 const PHONEPE_BASE_URL =
-  "https://api-preprod.phonepe.com/apis/pg-sandbox";
+  "https://api-preprod.phonepe.com/apis/hermes";
+
 
 // 🔥 STEP 1 — Generate Access Token
 export const generateAccessToken = async () => {
