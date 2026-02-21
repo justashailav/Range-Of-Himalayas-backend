@@ -2,7 +2,7 @@ import crypto from "crypto";
 import axios from "axios";
 
 const PHONEPE_BASE_URL =
-  "https://api-preprod.phonepe.com/apis/pg-sandbox";
+  "https://api-preprod.phonepe.com/apis/hermes";
 
 export const createChecksum = (payload, apiPath) => {
   const base64Payload = Buffer
