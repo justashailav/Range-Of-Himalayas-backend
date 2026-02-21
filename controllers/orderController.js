@@ -159,18 +159,19 @@ export const createOrder = async (req, res) => {
 
     // 🔥 PHONEPE PAYLOAD
     const payload = {
-      merchantId: process.env.PHONEPE_MERCHANT_ID,
-      merchantTransactionId,
-      merchantUserId: userId.toString(),
-      amount: payableAmount * 100,
-      redirectUrl: `${process.env.FRONTEND_URL}/payment-success`,
-      redirectMode: "REDIRECT",
-      callbackUrl: `${process.env.BACKEND_URL}/api/orders/phonepe-callback`,
-      mobileNumber: addressInfo?.phone || "9999999999",
-      paymentInstrument: {
-        type: "PAY_PAGE",
-      },
-    };
+  merchantId: process.env.PHONEPE_MERCHANT_ID,
+  merchantTransactionId,
+  merchantUserId: userId.toString(),
+  amount: payableAmount * 100,
+  redirectUrl: `${process.env.FRONTEND_URL}/payment-success`,
+  redirectMode: "POST", // ✅ change here
+  callbackUrl:
+    "https://range-of-himalayas-backend.onrender.com/api/orders/phonepe-callback",
+  mobileNumber: addressInfo?.phone || "9999999999",
+  paymentInstrument: {
+    type: "PAY_PAGE",
+  },
+};
     console.log("===== PHONEPE DEBUG START =====");
 console.log("NODE_ENV:", process.env.NODE_ENV);
 console.log("Merchant ID (env):", process.env.PHONEPE_MERCHANT_ID);
