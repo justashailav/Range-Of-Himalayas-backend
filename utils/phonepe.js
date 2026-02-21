@@ -1,76 +1,75 @@
-import crypto from "crypto";
 import axios from "axios";
+import qs from "qs";
 
 const PHONEPE_BASE_URL =
-  "https://api-preprod.phonepe.com/apis/hermes";
+  "https://api-preprod.phonepe.com/apis/pg-sandbox";
 
-export const createChecksum = (payload, apiPath) => {
-  const base64Payload = Buffer
-    .from(JSON.stringify(payload))
-    .toString("base64");
+// 🔥 STEP 1 — Generate Access Token
+export const generateAccessToken = async () => {
+  try {
+    const response = await axios.post(
+      `${PHONEPE_BASE_URL}/v1/oauth/token`,
+      qs.stringify({
+        client_id: process.env.PHONEPE_MERCHANT_ID,
+        client_version: process.env.PHONEPE_SALT_INDEX, // this is 1
+        client_secret: process.env.PHONEPE_SALT_KEY,
+        grant_type: "client_credentials",
+      }),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      }
+    );
 
-  const hash =
-    crypto
-      .createHash("sha256")
-      .update(
-        base64Payload +
-          apiPath +
-          process.env.PHONEPE_SALT_KEY
-      )
-      .digest("hex");
-
-  const checksum =
-    hash + "###" + process.env.PHONEPE_SALT_INDEX;
-
-  return { base64Payload, checksum };
+    return response.data.access_token;
+  } catch (error) {
+    console.error("❌ Token generation failed:", error.response?.data || error);
+    throw error;
+  }
 };
 
+// 🔥 STEP 2 — Initiate Payment
 export const phonePePay = async (payload) => {
-  const apiPath = "/pg/v1/pay";
+  try {
+    const token = await generateAccessToken();
 
-  const { base64Payload, checksum } =
-    createChecksum(payload, apiPath);
+    const response = await axios.post(
+      `${PHONEPE_BASE_URL}/pg/v1/pay`,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-  const response = await axios.post(
-    `${PHONEPE_BASE_URL}${apiPath}`,
-    { request: base64Payload },
-    {
-      headers: {
-        "Content-Type": "application/json",
-        "X-VERIFY": checksum,
-      },
-    }
-  );
-
-  return response.data;
+    return response.data;
+  } catch (error) {
+    console.error("❌ PhonePe Pay Error:", error.response?.data || error);
+    throw error;
+  }
 };
 
-export const phonePeStatus = async (
-  merchantTransactionId
-) => {
-  const apiPath = `/pg/v1/status/${process.env.PHONEPE_MERCHANT_ID}/${merchantTransactionId}`;
+// 🔥 STEP 3 — Check Payment Status
+export const phonePeStatus = async (merchantTransactionId) => {
+  try {
+    const token = await generateAccessToken();
 
-  const hash =
-    crypto
-      .createHash("sha256")
-      .update(
-        apiPath + process.env.PHONEPE_SALT_KEY
-      )
-      .digest("hex");
+    const response = await axios.get(
+      `${PHONEPE_BASE_URL}/pg/v1/status/${process.env.PHONEPE_MERCHANT_ID}/${merchantTransactionId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-  const checksum =
-    hash + "###" + process.env.PHONEPE_SALT_INDEX;
-
-  const response = await axios.get(
-    `${PHONEPE_BASE_URL}${apiPath}`,
-    {
-      headers: {
-        "X-VERIFY": checksum,
-        "X-MERCHANT-ID":
-          process.env.PHONEPE_MERCHANT_ID,
-      },
-    }
-  );
-
-  return response.data;
+    return response.data;
+  } catch (error) {
+    console.error("❌ PhonePe Status Error:", error.response?.data || error);
+    throw error;
+  }
 };
