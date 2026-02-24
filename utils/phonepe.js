@@ -1,76 +1,106 @@
 import axios from "axios";
-import qs from "qs";
+import crypto from "crypto";
 
-const PHONEPE_BASE_URL =
-  "https://api-preprod.phonepe.com/apis/hermes";
+const BASE_URL = "https://api-preprod.phonepe.com/apis/hermes";
+const MERCHANT_ID = process.env.PHONEPE_MERCHANT_ID;
+const SALT_KEY = process.env.PHONEPE_SALT_KEY;
+const SALT_INDEX = process.env.PHONEPE_SALT_INDEX;
 
+// 🔥 Generate Checksum
+const generateChecksum = (payload) => {
+  const base64Payload = Buffer.from(payload).toString("base64");
 
-// 🔥 STEP 1 — Generate Access Token
-export const generateAccessToken = async () => {
-  try {
-    const response = await axios.post(
-      `${PHONEPE_BASE_URL}/v1/oauth/token`,
-      qs.stringify({
-        client_id: process.env.PHONEPE_MERCHANT_ID,
-        client_version: process.env.PHONEPE_SALT_INDEX, // this is 1
-        client_secret: process.env.PHONEPE_SALT_KEY,
-        grant_type: "client_credentials",
-      }),
-      {
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      }
-    );
+  const stringToHash =
+    base64Payload + "/pg/v1/pay" + SALT_KEY;
 
-    return response.data.access_token;
-  } catch (error) {
-    console.error("❌ Token generation failed:", error.response?.data || error);
-    throw error;
-  }
+  const sha256 = crypto
+    .createHash("sha256")
+    .update(stringToHash)
+    .digest("hex");
+
+  const checksum = sha256 + "###" + SALT_INDEX;
+
+  return { base64Payload, checksum };
 };
 
-// 🔥 STEP 2 — Initiate Payment
-export const phonePePay = async (payload) => {
+
+// 🔥 STEP 1 — Initiate Payment
+export const phonePePay = async (amount, userId) => {
   try {
-    const token = await generateAccessToken();
+    const payload = {
+      merchantId: MERCHANT_ID,
+      merchantTransactionId: "TXN_" + Date.now(),
+      merchantUserId: userId,
+      amount: amount * 100,
+      redirectUrl: "https://rangeofhimalayas.co.in/success",
+      redirectMode: "POST",
+      callbackUrl:
+        "https://range-of-himalayas-backend.onrender.com/api/payment/callback",
+      paymentInstrument: {
+        type: "PAY_PAGE",
+      },
+    };
+
+    const payloadString = JSON.stringify(payload);
+
+    const { base64Payload, checksum } =
+      generateChecksum(payloadString);
 
     const response = await axios.post(
-      `${PHONEPE_BASE_URL}/pg/v1/pay`,
-      payload,
+      `${BASE_URL}/pg/v1/pay`,
+      {
+        request: base64Payload,
+      },
       {
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          "X-VERIFY": checksum,
+          accept: "application/json",
         },
       }
     );
 
     return response.data;
+
   } catch (error) {
-    console.error("❌ PhonePe Pay Error:", error.response?.data || error);
+    console.error("❌ PhonePe Pay Error:",
+      error.response?.data || error.message
+    );
     throw error;
   }
 };
 
-// 🔥 STEP 3 — Check Payment Status
+
+// 🔥 STEP 2 — Check Payment Status
 export const phonePeStatus = async (merchantTransactionId) => {
   try {
-    const token = await generateAccessToken();
+    const stringToHash =
+      `/pg/v1/status/${MERCHANT_ID}/${merchantTransactionId}` +
+      SALT_KEY;
+
+    const sha256 = crypto
+      .createHash("sha256")
+      .update(stringToHash)
+      .digest("hex");
+
+    const checksum = sha256 + "###" + SALT_INDEX;
 
     const response = await axios.get(
-      `${PHONEPE_BASE_URL}/pg/v1/status/${process.env.PHONEPE_MERCHANT_ID}/${merchantTransactionId}`,
+      `${BASE_URL}/pg/v1/status/${MERCHANT_ID}/${merchantTransactionId}`,
       {
         headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
+          "X-VERIFY": checksum,
+          accept: "application/json",
         },
       }
     );
 
     return response.data;
+
   } catch (error) {
-    console.error("❌ PhonePe Status Error:", error.response?.data || error);
+    console.error("❌ Status Error:",
+      error.response?.data || error.message
+    );
     throw error;
   }
 };

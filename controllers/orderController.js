@@ -159,6 +159,7 @@ export const createOrder = async (req, res) => {
 
     // 🔥 PHONEPE PAYLOAD
     const payload = {
+      merchantId: process.env.PHONEPE_MERCHANT_ID,
   merchantTransactionId,
   merchantUserId: userId.toString(),
   amount: payableAmount * 100,
