@@ -280,32 +280,55 @@ export const capturePayment = async (req, res) => {
       razorpay_signature,
     } = req.body;
 
+    console.log("========== RAZORPAY VERIFY START ==========");
+
     const order = await Order.findById(orderId);
 
     if (!order) {
+      console.log("❌ Order not found");
       return res.status(404).json({
         success: false,
         message: "Order not found",
       });
     }
 
+    console.log("DB Order ID:", order._id);
+    console.log("Stored Razorpay Order ID:", order.razorpayOrderId);
+    console.log("Incoming Razorpay Order ID:", razorpay_order_id);
+    console.log("Incoming Payment ID:", razorpay_payment_id);
+    console.log("Incoming Signature:", razorpay_signature);
+    console.log("Using Secret:", process.env.RAZORPAY_KEY_SECRET);
+
     // ✅ Prevent double payment
     if (order.paymentStatus === "paid") {
+      console.log("⚠️ Already paid");
       return res.status(400).json({
         success: false,
         message: "Already paid",
       });
     }
 
-    // ✅ Verify Razorpay Signature
-    const body = razorpay_order_id + "|" + razorpay_payment_id;
+    // ✅ Check Razorpay order ID matches
+    if (order.razorpayOrderId !== razorpay_order_id) {
+      console.log("❌ Order ID mismatch");
+      return res.status(400).json({
+        success: false,
+        message: "Order ID mismatch",
+      });
+    }
 
-    const expectedSignature = crypto
+    // ✅ Generate signature
+    const generatedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-      .update(body.toString())
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex");
 
-    if (expectedSignature !== razorpay_signature) {
+    console.log("Generated Signature:", generatedSignature);
+
+    // ✅ Verify signature
+    if (generatedSignature !== razorpay_signature) {
+      console.log("❌ Signature mismatch");
+
       order.paymentStatus = "failed";
       await order.save();
 
@@ -315,6 +338,8 @@ export const capturePayment = async (req, res) => {
       });
     }
 
+    console.log("✅ Signature verified successfully");
+
     // ===============================
     // ✅ PAYMENT VERIFIED
     // ===============================
@@ -322,13 +347,13 @@ export const capturePayment = async (req, res) => {
     order.razorpayPaymentId = razorpay_payment_id;
     order.razorpaySignature = razorpay_signature;
 
-    // 🔥 FULL PAYMENT
+    // 🔥 Full Online Payment
     if (order.paymentMethod === "razorpay") {
       order.paymentStatus = "paid";
       order.orderStatus = "confirmed";
     }
 
-    // 🔥 COD ₹200 ADVANCE PAYMENT
+    // 🔥 COD ₹200 Advance
     if (order.paymentMethod === "cod") {
       order.paymentStatus = "partial_paid";
       order.codAdvancePaid = true;
@@ -370,6 +395,8 @@ export const capturePayment = async (req, res) => {
       await sendOrderEmail(user, order, order.boxes);
     }
 
+    console.log("========== RAZORPAY VERIFY END ==========");
+
     return res.status(200).json({
       success: true,
       message: "Payment verified successfully",
@@ -384,7 +411,6 @@ export const capturePayment = async (req, res) => {
     });
   }
 };
-
 
 export const getAllOrdersByUserId = async (req, res) => {
   try {
