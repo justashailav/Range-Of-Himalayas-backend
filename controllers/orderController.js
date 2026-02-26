@@ -6,10 +6,9 @@ import { Order } from "../models/Order.js";
 import { User } from "../models/userModel.js";
 import { generateOrderEmailTemplate } from "../utils/emailTemplate.js";
 import { generateInvoicePDFBuffer } from "../utils/generateInvoicePDF.js";
-import { phonePePay, phonePeStatus } from "../utils/phonepe.js";
 import { sendEmail } from "../utils/sendEmail.js";
 import crypto from "crypto";
-
+import razorpay from "../utils/razorpay.js";
 const adjustStock = async (cartItems, type = "deduct") => {
   const factor = type === "deduct" ? -1 : 1;
 
@@ -85,6 +84,7 @@ const restoreStock = async (cartItems, boxes) => {
 };
 
 
+
 export const createOrder = async (req, res) => {
   try {
     const {
@@ -92,7 +92,7 @@ export const createOrder = async (req, res) => {
       cartItems = [],
       boxes = [],
       addressInfo,
-      paymentMethod, // "phonepe" | "cod"
+      paymentMethod, // "razorpay" | "cod"
       totalAmount,
       cartId,
       code,
@@ -105,7 +105,7 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    if (!["phonepe", "cod"].includes(paymentMethod)) {
+    if (!["razorpay", "cod"].includes(paymentMethod)) {
       return res.status(400).json({
         success: false,
         message: "Invalid payment method.",
@@ -131,7 +131,7 @@ export const createOrder = async (req, res) => {
       }
     }
 
-    // ✅ COUPON VALIDATION (same as yours)
+    // ✅ COUPON VALIDATION
     let coupon = null;
     const formattedCode =
       typeof code === "string" && code.trim()
@@ -151,47 +151,11 @@ export const createOrder = async (req, res) => {
 
     const COD_ADVANCE = 200;
 
+    // 🔥 If COD → pay only ₹200 now
     const payableAmount =
       paymentMethod === "cod" ? COD_ADVANCE : totalAmount;
 
-    // 🔥 CREATE MERCHANT TRANSACTION ID
-    const merchantTransactionId = "TXN" + Date.now();
-
-    // 🔥 PHONEPE PAYLOAD
-    const payload = {
-      merchantId: process.env.PHONEPE_MERCHANT_ID,
-  merchantTransactionId,
-  merchantUserId: userId.toString(),
-  amount: payableAmount * 100,
-  redirectUrl: `${process.env.FRONTEND_URL}/payment-success`,
-  redirectMode: "POST",
-  callbackUrl:
-    "https://range-of-himalayas-backend.onrender.com/api/orders/phonepe-callback",
-  mobileNumber: addressInfo?.phone || "9999999999",
-  paymentInstrument: {
-    type: "PAY_PAGE",
-  },
-};
-    console.log("===== PHONEPE DEBUG START =====");
-console.log("NODE_ENV:", process.env.NODE_ENV);
-console.log("Merchant ID (env):", process.env.PHONEPE_MERCHANT_ID);
-console.log("Salt Index:", process.env.PHONEPE_SALT_INDEX);
-console.log("Salt Key exists?:", !!process.env.PHONEPE_SALT_KEY);
-console.log("Merchant ID (payload):", payload.merchantId);
-console.log("Amount (paise):", payload.amount);
-console.log("Callback URL:", payload.callbackUrl);
-console.log("===== PHONEPE DEBUG END =====");
-
-    const phonepeResponse = await phonePePay(payload);
-
-    if (!phonepeResponse.success) {
-      return res.status(400).json({
-        success: false,
-        message: "PhonePe payment initialization failed",
-      });
-    }
-
-    // ✅ SAVE ORDER
+    // ✅ CREATE ORDER FIRST (status pending)
     const newOrder = await new Order({
       userId,
       cartItems,
@@ -203,24 +167,37 @@ console.log("===== PHONEPE DEBUG END =====");
       code: coupon ? coupon._id : null,
       orderStatus: "pending",
       paymentStatus: "pending",
-      merchantTransactionId,
 
       ...(paymentMethod === "cod" && {
         codAdvanceAmount: COD_ADVANCE,
         codRemainingAmount: totalAmount - COD_ADVANCE,
         codAdvancePaid: false,
       }),
-
-      orderDate: new Date(),
-      orderUpdateDate: new Date(),
     }).save();
+
+    // ==============================
+    // 💳 CREATE RAZORPAY ORDER
+    // ==============================
+    const razorpayOrder = await razorpay.orders.create({
+      amount: payableAmount * 100, // paise
+      currency: "INR",
+      receipt: `receipt_${newOrder._id}`,
+    });
+
+    newOrder.razorpayOrderId = razorpayOrder.id;
+    await newOrder.save();
 
     return res.status(201).json({
       success: true,
-      message: "Redirecting to PhonePe...",
+      message:
+        paymentMethod === "cod"
+          ? "Pay ₹200 advance to confirm COD order"
+          : "Complete payment to place order",
       orderId: newOrder._id,
-      redirectUrl:
-        phonepeResponse.data.instrumentResponse.redirectInfo.url,
+      razorpayOrderId: razorpayOrder.id,
+      amount: razorpayOrder.amount,
+      currency: razorpayOrder.currency,
+      key: process.env.RAZORPAY_KEY_ID,
     });
 
   } catch (error) {
@@ -296,24 +273,23 @@ async function sendOrderEmail(user, order, boxes) {
 
 export const capturePayment = async (req, res) => {
   try {
-    const { orderId, merchantTransactionId } = req.body;
+    const {
+      orderId,
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+    } = req.body;
 
     const order = await Order.findById(orderId);
-    if (!order)
+
+    if (!order) {
       return res.status(404).json({
         success: false,
         message: "Order not found",
       });
-
-    if (
-      order.phonepeMerchantTransactionId !== merchantTransactionId
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Transaction mismatch",
-      });
     }
 
+    // ✅ Prevent double payment
     if (order.paymentStatus === "paid") {
       return res.status(400).json({
         success: false,
@@ -321,37 +297,38 @@ export const capturePayment = async (req, res) => {
       });
     }
 
-    // 🔐 VERIFY WITH PHONEPE
-    const statusResponse = await phonePeStatus(
-      merchantTransactionId
-    );
+    // ✅ Verify Razorpay Signature
+    const body = razorpay_order_id + "|" + razorpay_payment_id;
 
-    if (
-      !statusResponse.success ||
-      statusResponse.data.state !== "COMPLETED"
-    ) {
+    const expectedSignature = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(body.toString())
+      .digest("hex");
+
+    if (expectedSignature !== razorpay_signature) {
       order.paymentStatus = "failed";
-      order.phonepeState = "FAILED";
       await order.save();
 
       return res.status(400).json({
         success: false,
-        message: "Payment not completed",
+        message: "Payment verification failed",
       });
     }
 
-    // ✅ PAYMENT SUCCESS
+    // ===============================
+    // ✅ PAYMENT VERIFIED
+    // ===============================
 
-    order.phonepeTransactionId =
-      statusResponse.data.transactionId;
+    order.razorpayPaymentId = razorpay_payment_id;
+    order.razorpaySignature = razorpay_signature;
 
-    order.phonepeState = "COMPLETED";
-
-    if (order.paymentMethod === "phonepe") {
+    // 🔥 FULL PAYMENT
+    if (order.paymentMethod === "razorpay") {
       order.paymentStatus = "paid";
       order.orderStatus = "confirmed";
     }
 
+    // 🔥 COD ₹200 ADVANCE PAYMENT
     if (order.paymentMethod === "cod") {
       order.paymentStatus = "partial_paid";
       order.codAdvancePaid = true;
@@ -365,7 +342,9 @@ export const capturePayment = async (req, res) => {
 
     order.orderUpdateDate = new Date();
 
-    // 🔥 NOW CONNECT MISSING FUNCTIONS
+    // ===============================
+    // 🔥 BUSINESS OPERATIONS
+    // ===============================
 
     // 1️⃣ Deduct stock
     await adjustStock(order.cartItems, "deduct");
@@ -761,7 +740,6 @@ export const cancelFullOrder = async (req, res) => {
       });
     }
 
-    // ❌ Prevent double cancel
     if (order.orderStatus === "cancelled") {
       return res.status(400).json({
         success: false,
@@ -783,33 +761,54 @@ export const cancelFullOrder = async (req, res) => {
 
     let refundAmount = 0;
 
-    // =========================
-    // PAYMENT REFUND LOGIC
-    // =========================
+    // ==================================
+    // 💰 RAZORPAY REFUND LOGIC
+    // ==================================
 
-    // ✅ FULL ONLINE PAYMENT
+    // ✅ FULL ONLINE PAYMENT REFUND
     if (
-      order.paymentMethod === "phonepe" &&
-      order.paymentStatus === "paid"
+      order.paymentMethod === "razorpay" &&
+      order.paymentStatus === "paid" &&
+      order.razorpayPaymentId
     ) {
       refundAmount = order.totalAmount;
 
-      order.refundAmount = refundAmount;
-      order.refundStatus = "processing";
+      try {
+        await razorpay.payments.refund(order.razorpayPaymentId, {
+          amount: refundAmount * 100, // paise
+        });
 
-      // 🔥 Here you can later integrate PhonePe Refund API
-      // For now: manual processing
+        order.refundAmount = refundAmount;
+        order.refundStatus = "refunded";
+      } catch (refundError) {
+        console.error("Refund failed:", refundError);
+
+        order.refundAmount = refundAmount;
+        order.refundStatus = "processing";
+      }
     }
 
-    // ✅ COD ADVANCE REFUND
+    // ✅ COD ₹200 ADVANCE REFUND
     if (
       order.paymentMethod === "cod" &&
-      order.codAdvancePaid
+      order.codAdvancePaid &&
+      order.razorpayPaymentId
     ) {
       refundAmount = order.codAdvanceAmount;
 
-      order.refundAmount = refundAmount;
-      order.refundStatus = "processing";
+      try {
+        await razorpay.payments.refund(order.razorpayPaymentId, {
+          amount: refundAmount * 100,
+        });
+
+        order.refundAmount = refundAmount;
+        order.refundStatus = "refunded";
+      } catch (refundError) {
+        console.error("COD advance refund failed:", refundError);
+
+        order.refundAmount = refundAmount;
+        order.refundStatus = "processing";
+      }
     }
 
     // ✅ If unpaid
@@ -819,9 +818,9 @@ export const cancelFullOrder = async (req, res) => {
 
     await order.save();
 
-    // =========================
-    // EMAIL
-    // =========================
+    // ==================================
+    // 📧 EMAIL
+    // ==================================
 
     await sendEmail({
       email: user.email,
@@ -833,7 +832,11 @@ export const cancelFullOrder = async (req, res) => {
         ${
           refundAmount > 0
             ? `<p><strong>Refund Amount:</strong> ₹${refundAmount}</p>
-               <p><strong>Status:</strong> Processing (5–7 business days)</p>`
+               <p><strong>Status:</strong> ${
+                 order.refundStatus === "refunded"
+                   ? "Refunded Successfully"
+                   : "Processing (5–7 business days)"
+               }</p>`
             : ""
         }
         <p>Thank you for shopping with Range of Himalayas 🍎</p>
@@ -854,7 +857,6 @@ export const cancelFullOrder = async (req, res) => {
     });
   }
 };
-
 export const requestReturnItems = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -1273,11 +1275,9 @@ export const approveReturnRequest = async (req, res) => {
         cancelledItem.quantity
       );
 
-      // Mark as approved for refund
-      cancelledItem.refundAvailableDate = new Date();
-      cancelledItem.refunded = false;
-
       refundAmount += approveQty * Number(cancelledItem.price || 0);
+
+      cancelledItem.refundAvailableDate = new Date();
 
       // 🔄 Restore stock
       await restoreStock(
@@ -1293,33 +1293,72 @@ export const approveReturnRequest = async (req, res) => {
       );
     }
 
-    // ==========================
-    // REFUND LOGIC
-    // ==========================
+    // ==================================
+    // 💰 RAZORPAY PARTIAL REFUND LOGIC
+    // ==================================
 
     if (refundAmount > 0) {
-      order.refundAmount = (order.refundAmount || 0) + refundAmount;
 
-      // ✅ Online Payment (PhonePe)
-      if (
-        order.paymentMethod === "phonepe" &&
-        order.paymentStatus === "paid"
-      ) {
-        order.refundStatus = "processing";
-        // 🔥 You can integrate PhonePe Refund API here later
-      }
-
-      // ✅ COD Advance Case
-      if (
-        order.paymentMethod === "cod" &&
-        order.codAdvancePaid
-      ) {
-        order.refundStatus = "processing";
-      }
-
-      // ✅ If unpaid order
+      // If payment never completed → no refund needed
       if (order.paymentStatus === "pending") {
         order.refundStatus = "none";
+      }
+
+      // ✅ FULL ONLINE PAYMENT
+      if (
+        order.paymentMethod === "razorpay" &&
+        order.paymentStatus === "paid" &&
+        order.razorpayPaymentId
+      ) {
+        try {
+          await razorpay.payments.refund(order.razorpayPaymentId, {
+            amount: refundAmount * 100, // paise
+          });
+
+          order.refundAmount =
+            (order.refundAmount || 0) + refundAmount;
+
+          order.refundStatus = "refunded";
+
+        } catch (error) {
+          console.error("Partial refund failed:", error);
+
+          order.refundAmount =
+            (order.refundAmount || 0) + refundAmount;
+
+          order.refundStatus = "processing";
+        }
+      }
+
+      // ✅ COD ₹200 Advance Case
+      if (
+        order.paymentMethod === "cod" &&
+        order.codAdvancePaid &&
+        order.razorpayPaymentId
+      ) {
+        // Refund only from advance amount
+        const maxRefundable = order.codAdvanceAmount;
+
+        const finalRefund = Math.min(refundAmount, maxRefundable);
+
+        try {
+          await razorpay.payments.refund(order.razorpayPaymentId, {
+            amount: finalRefund * 100,
+          });
+
+          order.refundAmount =
+            (order.refundAmount || 0) + finalRefund;
+
+          order.refundStatus = "refunded";
+
+        } catch (error) {
+          console.error("COD advance refund failed:", error);
+
+          order.refundAmount =
+            (order.refundAmount || 0) + finalRefund;
+
+          order.refundStatus = "processing";
+        }
       }
     }
 
@@ -1329,7 +1368,7 @@ export const approveReturnRequest = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Return approved successfully. Refund processing.",
+      message: "Return approved successfully. Refund processed.",
       data: order,
     });
 

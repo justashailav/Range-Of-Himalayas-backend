@@ -77,14 +77,10 @@ const orderSchema = new mongoose.Schema(
     /* ✅ PAYMENT */
     paymentMethod: {
       type: String,
-      enum: ["phonepe", "cod"],
+      enum: ["razorpay", "cod"],
       required: true,
     },
 
-    paymentGateway: {
-      type: String,
-      default: "phonepe",
-    },
 
     paymentStatus: {
       type: String,
@@ -97,21 +93,18 @@ const orderSchema = new mongoose.Schema(
       required: true,
     },
 
-    /* ✅ PhonePe Fields */
-    phonepeMerchantTransactionId: {
-      type: String,
-      index: true,
-    },
+    razorpayOrderId: {
+  type: String,
+  index: true,
+},
 
-    phonepeTransactionId: {
-      type: String,
-    },
+razorpayPaymentId: {
+  type: String,
+},
 
-    phonepeState: {
-      type: String,
-      enum: ["PENDING", "COMPLETED", "FAILED"],
-      default: "PENDING",
-    },
+razorpaySignature: {
+  type: String,
+},
 
     /* ✅ COD Fields */
     codAdvanceAmount: {
