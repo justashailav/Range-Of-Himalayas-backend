@@ -27,29 +27,29 @@ const adjustStock = async (cartItems, type = "deduct") => {
       const variant = product.variants?.find(
         (v) =>
           v.size === selectedSize &&
-          (v.weight === selectedWeight || v.weight == item.weight)
+          (v.weight === selectedWeight || v.weight == item.weight),
       );
 
       if (!variant) {
         console.warn(
-          `⚠️ Variant not found for ${product.title} (${selectedSize}, ${selectedWeight}kg)`
+          `⚠️ Variant not found for ${product.title} (${selectedSize}, ${selectedWeight}kg)`,
         );
         continue;
       }
       variant.stock = Math.max(
         (variant.stock || 0) + factor * item.quantity,
-        0
+        0,
       );
       product.markModified("variants");
       await product.save();
 
       console.log(
-        `✅ Stock updated: ${product.title} (${variant.size}, ${variant.weight}kg) = ${variant.stock}`
+        `✅ Stock updated: ${product.title} (${variant.size}, ${variant.weight}kg) = ${variant.stock}`,
       );
     } catch (err) {
       console.error(
         `💥 Error updating stock for ${item.productId}:`,
-        err.message
+        err.message,
       );
     }
   }
@@ -82,8 +82,6 @@ const restoreStock = async (cartItems, boxes) => {
     }
   }
 };
-
-
 
 export const createOrder = async (req, res) => {
   try {
@@ -152,8 +150,7 @@ export const createOrder = async (req, res) => {
     const COD_ADVANCE = 200;
 
     // 🔥 If COD → pay only ₹200 now
-    const payableAmount =
-      paymentMethod === "cod" ? COD_ADVANCE : totalAmount;
+    const payableAmount = paymentMethod === "cod" ? COD_ADVANCE : totalAmount;
 
     // ✅ CREATE ORDER FIRST (status pending)
     const newOrder = await new Order({
@@ -199,7 +196,6 @@ export const createOrder = async (req, res) => {
       currency: razorpayOrder.currency,
       key: process.env.RAZORPAY_KEY_ID,
     });
-
   } catch (error) {
     console.error("🔥 Order creation error:", error);
     return res.status(500).json({
@@ -223,13 +219,13 @@ async function updateCouponUsage(code, userId) {
     }
 
     const existingUser = coupon.usedBy.find(
-      (entry) => entry.user.toString() === userId.toString()
+      (entry) => entry.user.toString() === userId.toString(),
     );
 
     if (existingUser) {
       await Coupon.updateOne(
         { code: normalizedCode, "usedBy.user": userId },
-        { $inc: { "usedBy.$.count": 1, usedCount: 1 } }
+        { $inc: { "usedBy.$.count": 1, usedCount: 1 } },
       );
       console.log("✅ Incremented coupon usage for existing user.");
     } else {
@@ -238,7 +234,7 @@ async function updateCouponUsage(code, userId) {
         {
           $push: { usedBy: { user: userId, count: 1 } },
           $inc: { usedCount: 1 },
-        }
+        },
       );
       console.log("✅ Added new user usage record for coupon.");
     }
@@ -383,9 +379,10 @@ export const capturePayment = async (req, res) => {
     }
 
     // 3️⃣ Delete cart
-    if (order.cartId) {
-      await Cart.findByIdAndDelete(order.cartId);
-    }
+    await Cart.findOneAndUpdate(
+      { userId: order.userId },
+      { items: [], boxes: [] },
+    );
 
     await order.save();
 
@@ -402,7 +399,6 @@ export const capturePayment = async (req, res) => {
       message: "Payment verified successfully",
       order,
     });
-
   } catch (error) {
     console.error("❌ capturePayment error:", error);
     return res.status(500).json({
@@ -695,7 +691,7 @@ export const updateOrderStatus = async (req, res) => {
           <p>${messageBody}</p>
           <p><b>Order ID:</b> #${order._id}</p>
           <p><b>Updated On:</b> ${new Date(
-            order.orderUpdateDate
+            order.orderUpdateDate,
           ).toLocaleString()}</p>
           <hr style="border:none; border-top:1px solid #eee; margin: 20px 0;">
           <p>Thank you for choosing <b>Range of Himalayas</b> 🌄🍏<br/>
@@ -756,8 +752,7 @@ export const cancelFullOrder = async (req, res) => {
 
     // ⏳ 24 hour cancellation window
     const now = new Date();
-    const diffHours =
-      (now - new Date(order.createdAt)) / (1000 * 60 * 60);
+    const diffHours = (now - new Date(order.createdAt)) / (1000 * 60 * 60);
 
     if (diffHours > 24) {
       return res.status(400).json({
@@ -874,7 +869,6 @@ export const cancelFullOrder = async (req, res) => {
       message: "Order cancelled successfully",
       data: order,
     });
-
   } catch (error) {
     console.error("Cancel full order error:", error);
     return res.status(500).json({
@@ -922,7 +916,7 @@ export const requestReturnItems = async (req, res) => {
     const returnItems = items
       .map((item) => {
         const cartItem = order.cartItems.find(
-          (ci) => ci.productId.toString() === item.productId
+          (ci) => ci.productId.toString() === item.productId,
         );
         if (!cartItem) return null;
 
@@ -952,11 +946,11 @@ export const requestReturnItems = async (req, res) => {
     // ✅ Full refund logic (if all items returned)
     const totalItemsOrdered = order.cartItems.reduce(
       (sum, i) => sum + i.quantity,
-      0
+      0,
     );
     const totalItemsReturned = returnItems.reduce(
       (sum, i) => sum + i.quantity,
-      0
+      0,
     );
 
     if (totalItemsReturned >= totalItemsOrdered) {
@@ -964,7 +958,7 @@ export const requestReturnItems = async (req, res) => {
     } else {
       totalReturnAmount = Math.min(
         Number(totalReturnAmount.toFixed(2)),
-        Number(order.totalAmount)
+        Number(order.totalAmount),
       );
     }
 
@@ -1042,7 +1036,7 @@ export const requestReturnItems = async (req, res) => {
                       <td style="padding:8px; border-bottom:1px solid #f0f0f0;">${item.weight}</td>
                       <td style="padding:8px; border-bottom:1px solid #f0f0f0;">${item.quantity}</td>
                     </tr>
-                  `
+                  `,
                 )
                 .join("")}
             </tbody>
@@ -1164,8 +1158,8 @@ export const approveAdminReturnRequest = async (req, res) => {
             <p style="font-size: 15px; color: #555; line-height: 1.6;">
               Your return request for <b>Order #${order._id}</b> has been 
               <b style="color:${approve ? "#28a745" : "#dc3545"};">${
-          approve ? "approved" : "rejected"
-        }</b>.
+                approve ? "approved" : "rejected"
+              }</b>.
             </p>
 
             ${
@@ -1199,7 +1193,7 @@ export const approveAdminReturnRequest = async (req, res) => {
                               item.quantity
                             }</td>
                           </tr>
-                        `
+                        `,
                       )
                       .join("")}
                   </tbody>
@@ -1289,17 +1283,12 @@ export const approveReturnRequest = async (req, res) => {
 
     for (const item of items) {
       const cancelledItem = order.cancelledItems.find(
-        (ci) =>
-          ci.productId.toString() === item.productId &&
-          !ci.refunded
+        (ci) => ci.productId.toString() === item.productId && !ci.refunded,
       );
 
       if (!cancelledItem) continue;
 
-      const approveQty = Math.min(
-        item.quantity,
-        cancelledItem.quantity
-      );
+      const approveQty = Math.min(item.quantity, cancelledItem.quantity);
 
       refundAmount += approveQty * Number(cancelledItem.price || 0);
 
@@ -1315,7 +1304,7 @@ export const approveReturnRequest = async (req, res) => {
             weight: cancelledItem.weight,
           },
         ],
-        []
+        [],
       );
     }
 
@@ -1324,7 +1313,6 @@ export const approveReturnRequest = async (req, res) => {
     // ==================================
 
     if (refundAmount > 0) {
-
       // If payment never completed → no refund needed
       if (order.paymentStatus === "pending") {
         order.refundStatus = "none";
@@ -1341,16 +1329,13 @@ export const approveReturnRequest = async (req, res) => {
             amount: refundAmount * 100, // paise
           });
 
-          order.refundAmount =
-            (order.refundAmount || 0) + refundAmount;
+          order.refundAmount = (order.refundAmount || 0) + refundAmount;
 
           order.refundStatus = "refunded";
-
         } catch (error) {
           console.error("Partial refund failed:", error);
 
-          order.refundAmount =
-            (order.refundAmount || 0) + refundAmount;
+          order.refundAmount = (order.refundAmount || 0) + refundAmount;
 
           order.refundStatus = "processing";
         }
@@ -1372,16 +1357,13 @@ export const approveReturnRequest = async (req, res) => {
             amount: finalRefund * 100,
           });
 
-          order.refundAmount =
-            (order.refundAmount || 0) + finalRefund;
+          order.refundAmount = (order.refundAmount || 0) + finalRefund;
 
           order.refundStatus = "refunded";
-
         } catch (error) {
           console.error("COD advance refund failed:", error);
 
-          order.refundAmount =
-            (order.refundAmount || 0) + finalRefund;
+          order.refundAmount = (order.refundAmount || 0) + finalRefund;
 
           order.refundStatus = "processing";
         }
@@ -1397,7 +1379,6 @@ export const approveReturnRequest = async (req, res) => {
       message: "Return approved successfully. Refund processed.",
       data: order,
     });
-
   } catch (error) {
     console.error("Approve return error:", error);
     return res.status(500).json({
@@ -1411,7 +1392,7 @@ export const trackOrder = async (req, res) => {
     const { id } = req.params;
 
     const order = await Order.findById(id).select(
-      "orderStatus statusHistory orderUpdateDate"
+      "orderStatus statusHistory orderUpdateDate",
     );
 
     if (!order) {
