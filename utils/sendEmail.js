@@ -1,43 +1,30 @@
-// import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
-// const resend = new Resend(process.env.RESEND_API_KEY);
-
-// export const sendEmail = async ({ email, subject, message, attachments }) => {
-//   try {
-//     await resend.emails.send({
-//       from: process.env.RESEND_FROM,
-//       to: email,
-//       subject,
-//       html: message,
-//       attachments: attachments?.map((file) => ({
-//         filename: file.filename,
-//         content: file.content,
-//       })),
-//     });
-
-//     console.log("Email sent successfully....");
-//   } catch (error) {
-//     console.error("Email Error →", error);
-//   }
-// };
-import { Resend } from "resend";
-const resend = new Resend(process.env.RESEND_API_KEY);
-
-export const sendEmail = async ({ email, subject, message, attachments }) => {
+export const sendEmail = async ({ email, subject, message }) => {
   try {
-    await resend.emails.send({
-      from: process.env.RESEND_FROM,
-      to: email,
-      subject,
-      html: message,
-      attachments: attachments?.map((file) => ({
-        filename: file.filename,
-        content: file.content,
-      })),
+    const transporter = nodemailer.createTransport({
+      host: process.env.BREVO_HOST,
+      port: parseInt(process.env.BREVO_PORT),
+      secure: false, 
+      auth: {
+        user: process.env.BREVO_USER,
+        pass: process.env.BREVO_SMTP_KEY,
+      },
     });
 
-    console.log("Email sent successfully....");
+    const mailOptions = {
+      // This will show as "HimalayanBooking <contact@rangeofhimalayas.co.in>"
+      from: `"HimalayanBooking" <${process.env.EMAIL_FROM}>`,
+      to: email,
+      subject: subject,
+      html: message,
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log("Email Dispatched Successfully:", info.messageId);
+    return info;
   } catch (error) {
-    console.error("Email Error →", error);
+    console.error("Critical Email Error:", error.message);
+    throw error;
   }
 };
