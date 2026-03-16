@@ -877,18 +877,15 @@ export const requestReturnItems = async (req, res) => {
 
     const order = await Order.findById(orderId);
     if (!order) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Order not found" });
+      return res.status(404).json({ success: false, message: "Order not found" });
     }
 
     const user = await User.findById(order.userId);
     if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
+    // Logic Gate: Only allow returns for delivered items
     if (order.orderStatus !== "delivered") {
       return res.status(400).json({
         success: false,
@@ -898,11 +895,11 @@ export const requestReturnItems = async (req, res) => {
 
     let totalReturnAmount = 0;
 
-    // ✅ Calculate return amount safely
+    // ✅ Map items and calculate refund amount
     const returnItems = items
       .map((item) => {
         const cartItem = order.cartItems.find(
-          (ci) => ci.productId.toString() === item.productId,
+          (ci) => ci.productId.toString() === item.productId
         );
         if (!cartItem) return null;
 
@@ -929,26 +926,20 @@ export const requestReturnItems = async (req, res) => {
       });
     }
 
-    // ✅ Full refund logic (if all items returned)
-    const totalItemsOrdered = order.cartItems.reduce(
-      (sum, i) => sum + i.quantity,
-      0,
-    );
-    const totalItemsReturned = returnItems.reduce(
-      (sum, i) => sum + i.quantity,
-      0,
-    );
+    // ✅ Full refund logic
+    const totalItemsOrdered = order.cartItems.reduce((sum, i) => sum + i.quantity, 0);
+    const totalItemsReturned = returnItems.reduce((sum, i) => sum + i.quantity, 0);
 
     if (totalItemsReturned >= totalItemsOrdered) {
       totalReturnAmount = Number(order.totalAmount);
     } else {
       totalReturnAmount = Math.min(
         Number(totalReturnAmount.toFixed(2)),
-        Number(order.totalAmount),
+        Number(order.totalAmount)
       );
     }
 
-    // ✅ Handle media uploads
+    // ✅ Handle media uploads (Cloudinary/S3)
     const photoUrls = [];
     const videoUrls = [];
 
@@ -977,6 +968,7 @@ export const requestReturnItems = async (req, res) => {
       requestedAt: new Date(),
     };
 
+    // ✅ Update Order Document
     order.returnRequests.push(newReturnRequest);
     order.returnStatus = "requested";
     order.refundAmount = totalReturnAmount;
@@ -984,89 +976,61 @@ export const requestReturnItems = async (req, res) => {
 
     await order.save({ validateBeforeSave: false });
 
-    // ✅ Send professional user email notification
-    await sendEmail({
+    // ✅ SEND EMAIL (FIXED: NO AWAIT)
+    // We do NOT await this. If the connection times out, the user still gets a success response.
+    sendEmail({
       email: user.email,
       subject: `Return Request Received – Order #${order._id}`,
       message: `
       <div style="font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; padding: 32px; border-radius: 12px; color: #333;">
         <div style="max-width: 600px; margin: auto; background: #ffffff; padding: 32px; border-radius: 12px; box-shadow: 0 3px 12px rgba(0,0,0,0.05);">
-          
           <h2 style="color:#f0ad4e; margin-bottom: 8px;">Return Request Submitted</h2>
-          <p style="font-size: 16px; color: #555;">Dear ${
-            user.name || "Customer"
-          },</p>
-
+          <p style="font-size: 16px; color: #555;">Dear ${user.name || "Customer"},</p>
           <p style="font-size: 15px; color: #555; line-height: 1.6;">
             We’ve received your return request for <b>Order #${order._id}</b>.  
-            Our team is currently reviewing it and will notify you once it’s <b>approved</b> or <b>rejected</b>.
+            Our team is currently reviewing it and will notify you once it’s processed.
           </p>
-
-          <h3 style="color:#333; margin-top: 24px;">Returned Items</h3>
+          <h3 style="color:#333; margin-top: 24px;">Items for Return</h3>
           <table style="width:100%; border-collapse: collapse; margin-top: 10px;">
             <thead>
               <tr style="background-color:#f7f7f7; text-align:left;">
                 <th style="padding: 8px; border-bottom: 1px solid #eee;">Product</th>
-                <th style="padding: 8px; border-bottom: 1px solid #eee;">Size</th>
-                <th style="padding: 8px; border-bottom: 1px solid #eee;">Weight</th>
                 <th style="padding: 8px; border-bottom: 1px solid #eee;">Qty</th>
               </tr>
             </thead>
             <tbody>
-              ${returnItems
-                .map(
-                  (item) => `
-                    <tr>
-                      <td style="padding:8px; border-bottom:1px solid #f0f0f0;">${item.productName}</td>
-                      <td style="padding:8px; border-bottom:1px solid #f0f0f0;">${item.size}</td>
-                      <td style="padding:8px; border-bottom:1px solid #f0f0f0;">${item.weight}</td>
-                      <td style="padding:8px; border-bottom:1px solid #f0f0f0;">${item.quantity}</td>
-                    </tr>
-                  `,
-                )
-                .join("")}
+              ${returnItems.map(item => `
+                <tr>
+                  <td style="padding:8px; border-bottom:1px solid #f0f0f0;">${item.productName}</td>
+                  <td style="padding:8px; border-bottom:1px solid #f0f0f0;">${item.quantity}</td>
+                </tr>
+              `).join("")}
             </tbody>
           </table>
-
           <div style="background-color: #fffaf0; padding: 16px 20px; border-left: 4px solid #f0ad4e; border-radius: 8px; margin: 24px 0;">
-            <h3 style="margin: 0 0 8px; color: #f0ad4e; font-size: 16px;">Refund Summary</h3>
             <p style="margin: 0; font-size: 15px; color: #444;">
-              Estimated Refund: <b>₹${totalReturnAmount}</b><br/>
-              Refund Status: <b>${order.refundStatus || "Pending Review"}</b>
-            </p>
-            <p style="margin-top: 8px; font-size: 14px; color: #777;">
-              Refunds are processed once your return is approved (typically within 5–7 business days).
+              Estimated Refund: <b>₹${totalReturnAmount}</b>
             </p>
           </div>
-
-          <p style="font-size: 15px; color: #555; line-height: 1.6;">
-            Thank you for your patience and for shopping with <b>Range of Himalayas</b>.  
-            We’ll notify you once your return request is reviewed.
-          </p>
-
-          <hr style="border:none; border-top:1px solid #eee; margin: 28px 0;">
-
-          <p style="font-size: 14px; color: #666;">
-            Team <b>Range of Himalayas 🍎</b><br/>
-            Fresh from the mountains, delivered with care.
-          </p>
-
-          <p style="font-size: 12px; color: #999; margin-top: 16px;">
-            This is an automated message. Please do not reply to this email.
-          </p>
+          <p style="font-size: 14px; color: #666;">Team <b>Range of Himalayas 🍎</b></p>
         </div>
       </div>
       `,
+    }).catch((emailError) => {
+      // This catch handles the Connection Timeout without breaking the API response
+      console.error("📧 Non-critical Email Error (Timeout):", emailError.message);
     });
 
+    // ✅ SUCCESS RESPONSE
     return res.status(200).json({
       success: true,
-      message:
-        "Return request submitted successfully. Awaiting admin approval.",
+      message: "Return request submitted successfully.",
       returnRequest: newReturnRequest,
       returnStatus: order.returnStatus,
     });
+
   } catch (error) {
+    // This catches critical errors (DB failure, file upload failure, etc.)
     console.error("❌ Request return error:", error);
     return res.status(500).json({
       success: false,
@@ -1075,7 +1039,6 @@ export const requestReturnItems = async (req, res) => {
     });
   }
 };
-
 export const approveAdminReturnRequest = async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -1083,9 +1046,7 @@ export const approveAdminReturnRequest = async (req, res) => {
 
     const order = await Order.findById(orderId);
     if (!order)
-      return res
-        .status(404)
-        .json({ success: false, message: "Order not found" });
+      return res.status(404).json({ success: false, message: "Order not found" });
 
     if (!order.returnRequests || order.returnRequests.length === 0)
       return res.status(400).json({
@@ -1095,9 +1056,7 @@ export const approveAdminReturnRequest = async (req, res) => {
 
     const request = order.returnRequests[requestIndex];
     if (!request)
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid return request index" });
+      return res.status(400).json({ success: false, message: "Invalid return request index" });
 
     const returnItems = request.items || [];
 
@@ -1108,7 +1067,6 @@ export const approveAdminReturnRequest = async (req, res) => {
     if (approve) {
       // Ensure refund amount matches order total
       request.refundAmount = order.totalAmount;
-
       order.refundStatus = "processing";
       order.refundAmount = Number(request.refundAmount);
     }
@@ -1119,120 +1077,50 @@ export const approveAdminReturnRequest = async (req, res) => {
 
     await order.save({ validateBeforeSave: false });
 
-    // ✅ Send email notification to user
+    // ✅ Send email notification (NON-BLOCKING)
     const user = await User.findById(order.userId);
     if (user && user.email) {
-      await sendEmail({
+      // We do NOT await this. This prevents the admin UI from hanging.
+      sendEmail({
         email: user.email,
-        subject: `Your Return Request has been ${
-          approve ? "Approved" : "Rejected"
-        } – Order #${order._id}`,
+        subject: `Your Return Request has been ${approve ? "Approved" : "Rejected"} – Order #${order._id}`,
         message: `
         <div style="font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb; padding: 32px; border-radius: 12px; color: #333;">
           <div style="max-width: 600px; margin: auto; background: #ffffff; padding: 32px; border-radius: 12px; box-shadow: 0 3px 12px rgba(0,0,0,0.05);">
-            
-            <h2 style="color:${
-              approve ? "#28a745" : "#dc3545"
-            }; margin-bottom: 12px;">
+            <h2 style="color:${approve ? "#28a745" : "#dc3545"}; margin-bottom: 12px;">
               Return Request ${approve ? "Approved" : "Rejected"}
             </h2>
-
-            <p style="font-size: 16px; color: #555;">Dear ${
-              user.name || "Customer"
-            },</p>
-
+            <p style="font-size: 16px; color: #555;">Dear ${user.name || "Customer"},</p>
             <p style="font-size: 15px; color: #555; line-height: 1.6;">
               Your return request for <b>Order #${order._id}</b> has been 
-              <b style="color:${approve ? "#28a745" : "#dc3545"};">${
-                approve ? "approved" : "rejected"
-              }</b>.
+              <b style="color:${approve ? "#28a745" : "#dc3545"};">${approve ? "approved" : "rejected"}</b>.
             </p>
-
-            ${
-              approve
-                ? `
-                <h3 style="color:#333; margin-top: 24px;">Returned Items</h3>
-                <table style="width:100%; border-collapse: collapse; margin-top: 10px;">
-                  <thead>
-                    <tr style="background-color:#f7f7f7; text-align:left;">
-                      <th style="padding: 8px; border-bottom: 1px solid #eee;">Product</th>
-                      <th style="padding: 8px; border-bottom: 1px solid #eee;">Size</th>
-                      <th style="padding: 8px; border-bottom: 1px solid #eee;">Weight</th>
-                      <th style="padding: 8px; border-bottom: 1px solid #eee;">Qty</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${returnItems
-                      .map(
-                        (item) => `
-                          <tr>
-                            <td style="padding:8px; border-bottom:1px solid #f0f0f0;">${
-                              item.productName
-                            }</td>
-                            <td style="padding:8px; border-bottom:1px solid #f0f0f0;">${
-                              item.size || "-"
-                            }</td>
-                            <td style="padding:8px; border-bottom:1px solid #f0f0f0;">${
-                              item.weight || "-"
-                            }</td>
-                            <td style="padding:8px; border-bottom:1px solid #f0f0f0;">${
-                              item.quantity
-                            }</td>
-                          </tr>
-                        `,
-                      )
-                      .join("")}
-                  </tbody>
-                </table>
-
+            ${approve ? `
                 <div style="background-color:#f6fff9; padding: 16px 20px; border-left: 4px solid #28a745; border-radius: 8px; margin: 24px 0;">
                   <h3 style="margin: 0 0 8px; color: #28a745; font-size: 16px;">Refund Details</h3>
                   <p style="margin: 0; font-size: 15px; color: #444;">
                     Refund Amount: <b>₹${request.refundAmount}</b><br/>
-                    Refund Status: <b>Processing</b>
-                  </p>
-                  <p style="margin-top: 8px; font-size: 14px; color: #777;">
-                    Your refund will be credited to your original payment method within <b>5–7 business days</b>.
+                    Status: <b>Processing</b>
                   </p>
                 </div>
-                `
-                : `
+            ` : `
                 <div style="background-color:#fff6f6; padding: 16px 20px; border-left: 4px solid #dc3545; border-radius: 8px; margin: 24px 0;">
-                  <h3 style="margin: 0 0 8px; color: #dc3545; font-size: 16px;">Return Request Rejected</h3>
                   <p style="margin: 0; font-size: 15px; color: #444;">
-                    Unfortunately, your return request could not be approved after review.  
-                    If you believe this was a mistake or wish to discuss further, please contact our support team.
+                    Unfortunately, your return request could not be approved. Please contact support for more details.
                   </p>
                 </div>
-                `
-            }
-
-            <p style="font-size: 15px; color: #555; line-height: 1.6;">
-              Thank you for your understanding and continued trust in <b>Range of Himalayas</b>.  
-              Our goal is to ensure every customer enjoys a fresh and delightful experience.
-            </p>
-
+            `}
             <hr style="border:none; border-top:1px solid #eee; margin: 28px 0;">
-
-            <p style="font-size: 14px; color: #666;">
-              Team <b>Range of Himalayas 🍎</b><br/>
-              Fresh from the mountains, delivered with care.
-            </p>
-
-            <p style="font-size: 12px; color: #999; margin-top: 16px;">
-              This is an automated message. Please do not reply to this email.
-            </p>
+            <p style="font-size: 14px; color: #666;">Team <b>Range of Himalayas 🍎</b></p>
           </div>
         </div>
         `,
-      });
+      }).catch(err => console.error("📧 Approval Email failed to send:", err.message));
     }
 
     return res.status(200).json({
       success: true,
-      message: `Return request ${
-        approve ? "approved" : "rejected"
-      } successfully.`,
+      message: `Return request ${approve ? "approved" : "rejected"} successfully.`,
       order,
     });
   } catch (error) {
@@ -1248,129 +1136,90 @@ export const approveAdminReturnRequest = async (req, res) => {
 export const approveReturnRequest = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { items } = req.body; // [{ productId, quantity }]
+    const { items } = req.body; 
 
     const order = await Order.findById(orderId);
     if (!order) {
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
+      return res.status(404).json({ success: false, message: "Order not found" });
     }
 
     if (!items || !items.length) {
-      return res.status(400).json({
-        success: false,
-        message: "No items provided",
-      });
+      return res.status(400).json({ success: false, message: "No items provided" });
     }
 
     let refundAmount = 0;
+    const stockToRestore = [];
 
+    // ✅ Identify items and calculate total refund
     for (const item of items) {
       const cancelledItem = order.cancelledItems.find(
-        (ci) => ci.productId.toString() === item.productId && !ci.refunded,
+        (ci) => ci.productId.toString() === item.productId && !ci.refunded
       );
 
       if (!cancelledItem) continue;
 
       const approveQty = Math.min(item.quantity, cancelledItem.quantity);
-
       refundAmount += approveQty * Number(cancelledItem.price || 0);
 
       cancelledItem.refundAvailableDate = new Date();
+      cancelledItem.refunded = true; // Mark as refunded so it can't be refunded twice
 
-      // 🔄 Restore stock
-      await restoreStock(
-        [
-          {
-            productId: item.productId,
-            quantity: approveQty,
-            size: cancelledItem.size || "Medium",
-            weight: cancelledItem.weight,
-          },
-        ],
-        [],
-      );
+      stockToRestore.push({
+        productId: item.productId,
+        quantity: approveQty,
+        size: cancelledItem.size || "Medium",
+        weight: cancelledItem.weight,
+      });
     }
 
-    // ==================================
-    // 💰 RAZORPAY PARTIAL REFUND LOGIC
-    // ==================================
+    // ✅ Restore stock in bulk
+    if (stockToRestore.length > 0) {
+      await restoreStock(stockToRestore, []);
+    }
 
+    // ✅ Razorpay Refund Logic
     if (refundAmount > 0) {
-      // If payment never completed → no refund needed
       if (order.paymentStatus === "pending") {
         order.refundStatus = "none";
       }
 
-      // ✅ FULL ONLINE PAYMENT
-      if (
-        order.paymentMethod === "razorpay" &&
-        order.paymentStatus === "paid" &&
-        order.razorpayPaymentId
-      ) {
-        try {
-          await razorpay.payments.refund(order.razorpayPaymentId, {
-            amount: refundAmount * 100, // paise
-          });
+      // Handle Online Payment Refund
+      const isOnlinePayment = order.paymentMethod === "razorpay" && order.paymentStatus === "paid";
+      const isCODAdvance = order.paymentMethod === "cod" && order.codAdvancePaid;
 
-          order.refundAmount = (order.refundAmount || 0) + refundAmount;
-
-          order.refundStatus = "refunded";
-        } catch (error) {
-          console.error("Partial refund failed:", error);
-
-          order.refundAmount = (order.refundAmount || 0) + refundAmount;
-
-          order.refundStatus = "processing";
+      if ((isOnlinePayment || isCODAdvance) && order.razorpayPaymentId) {
+        let finalRefundValue = refundAmount;
+        
+        // For COD, limit refund to the advance amount paid
+        if (isCODAdvance) {
+          finalRefundValue = Math.min(refundAmount, order.codAdvanceAmount);
         }
-      }
-
-      // ✅ COD ₹200 Advance Case
-      if (
-        order.paymentMethod === "cod" &&
-        order.codAdvancePaid &&
-        order.razorpayPaymentId
-      ) {
-        // Refund only from advance amount
-        const maxRefundable = order.codAdvanceAmount;
-
-        const finalRefund = Math.min(refundAmount, maxRefundable);
 
         try {
           await razorpay.payments.refund(order.razorpayPaymentId, {
-            amount: finalRefund * 100,
+            amount: Math.round(finalRefundValue * 100), // convert to paise
           });
-
-          order.refundAmount = (order.refundAmount || 0) + finalRefund;
-
           order.refundStatus = "refunded";
         } catch (error) {
-          console.error("COD advance refund failed:", error);
-
-          order.refundAmount = (order.refundAmount || 0) + finalRefund;
-
-          order.refundStatus = "processing";
+          console.error("Razorpay Refund Error:", error);
+          order.refundStatus = "processing"; // Manual intervention needed
         }
+        
+        order.refundAmount = (order.refundAmount || 0) + finalRefundValue;
       }
     }
 
     order.orderUpdateDate = new Date();
-
     await order.save();
 
     return res.status(200).json({
       success: true,
-      message: "Return approved successfully. Refund processed.",
+      message: "Return approved and refund initiated.",
       data: order,
     });
   } catch (error) {
     console.error("Approve return error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
 export const trackOrder = async (req, res) => {
