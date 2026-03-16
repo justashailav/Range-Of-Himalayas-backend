@@ -282,118 +282,103 @@ export const capturePayment = async (req, res) => {
 
     if (!order) {
       console.log("❌ Order not found");
-      return res.status(404).json({
-        success: false,
-        message: "Order not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
     }
 
-    console.log("DB Order ID:", order._id);
-    console.log("Stored Razorpay Order ID:", order.razorpayOrderId);
-    console.log("Incoming Razorpay Order ID:", razorpay_order_id);
-    console.log("Incoming Payment ID:", razorpay_payment_id);
-    console.log("Incoming Signature:", razorpay_signature);
-    console.log("Using Secret:", process.env.RAZORPAY_KEY_SECRET);
-
-    // ✅ Prevent double payment
+    // 1. Double Payment Protection
     if (order.paymentStatus === "paid") {
-      console.log("⚠️ Already paid");
-      return res.status(400).json({
-        success: false,
-        message: "Already paid",
-      });
+      return res.status(400).json({ success: false, message: "Already paid" });
     }
 
-    // ✅ Check Razorpay order ID matches
+    // 2. ID Validation
     if (order.razorpayOrderId !== razorpay_order_id) {
-      console.log("❌ Order ID mismatch");
-      return res.status(400).json({
-        success: false,
-        message: "Order ID mismatch",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Order ID mismatch" });
     }
 
-    // ✅ Generate signature
+    // 3. Signature Verification
     const generatedSignature = crypto
       .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
       .update(`${razorpay_order_id}|${razorpay_payment_id}`)
       .digest("hex");
 
-    console.log("Generated Signature:", generatedSignature);
-
-    // ✅ Verify signature
     if (generatedSignature !== razorpay_signature) {
       console.log("❌ Signature mismatch");
-
       order.paymentStatus = "failed";
       await order.save();
-
-      return res.status(400).json({
-        success: false,
-        message: "Payment verification failed",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Verification failed" });
     }
 
     console.log("✅ Signature verified successfully");
 
-    // ===============================
-    // ✅ PAYMENT VERIFIED
-    // ===============================
+    // ==========================================
+    // ✅ CRITICAL DATABASE UPDATES (Synchronous)
+    // ==========================================
 
     order.razorpayPaymentId = razorpay_payment_id;
     order.razorpaySignature = razorpay_signature;
 
-    // 🔥 Full Online Payment
     if (order.paymentMethod === "razorpay") {
       order.paymentStatus = "paid";
       order.orderStatus = "confirmed";
-    }
-
-    // 🔥 COD ₹200 Advance
-    if (order.paymentMethod === "cod") {
+    } else if (order.paymentMethod === "cod") {
       order.paymentStatus = "partial_paid";
       order.codAdvancePaid = true;
       order.orderStatus = "confirmed";
     }
 
-    order.statusHistory.push({
-      status: "confirmed",
-      updatedAt: new Date(),
-    });
-
+    order.statusHistory.push({ status: "confirmed", updatedAt: new Date() });
     order.orderUpdateDate = new Date();
 
-    // ===============================
-    // 🔥 BUSINESS OPERATIONS
-    // ===============================
-
-    // 1️⃣ Deduct stock
+    // Deduct stock, handle coupons, and clear cart
     await adjustStock(order.cartItems, "deduct");
 
-    // 2️⃣ Update coupon usage
     if (order.code) {
       const couponDoc = await Coupon.findById(order.code);
-      if (couponDoc) {
-        await updateCouponUsage(couponDoc.code, order.userId);
-      }
+      if (couponDoc) await updateCouponUsage(couponDoc.code, order.userId);
     }
 
-    // 3️⃣ Delete cart
     await Cart.findOneAndUpdate(
       { userId: order.userId },
       { items: [], boxes: [] },
     );
 
+    // Final Save to DB
     await order.save();
+    console.log("✅ Database record finalized");
 
-    // 4️⃣ Send confirmation email
-    const user = await User.findById(order.userId);
-    if (user) {
-      await sendOrderEmail(user, order, order.boxes);
-    }
+    // ==========================================
+    // 🔥 NON-BLOCKING SIDE EFFECTS (Email)
+    // ==========================================
+    // We do NOT 'await' this in a way that blocks the response
+    const triggerEmail = async () => {
+      try {
+        const user = await User.findById(order.userId);
+        if (user) {
+          console.log("📧 Attempting to send confirmation email...");
+          await sendOrderEmail(user, order, order.boxes);
+          console.log("✅ Email sent successfully");
+        }
+      } catch (emailError) {
+        // This logs the timeout but doesn't crash the payment process
+        console.error(
+          "Critical Email Error (Non-blocking):",
+          emailError.message,
+        );
+      }
+    };
+
+    // Execute email as a background task
+    triggerEmail();
 
     console.log("========== RAZORPAY VERIFY END ==========");
 
+    // RETURN SUCCESS IMMEDIATELY
     return res.status(200).json({
       success: true,
       message: "Payment verified successfully",
@@ -401,6 +386,7 @@ export const capturePayment = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ capturePayment error:", error);
+    // This only triggers if the DB operations or Signature check fail
     return res.status(500).json({
       success: false,
       message: "Internal server error",
