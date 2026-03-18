@@ -450,7 +450,7 @@ export const getAllOrdersOfAllUsers = async (req, res) => {
   try {
     const {
       filter,
-      title,
+      orderDate, // Destructure the date object sent from frontend
       status,
       orderId,
       customer,
@@ -461,91 +461,64 @@ export const getAllOrdersOfAllUsers = async (req, res) => {
 
     const query = {};
 
-    // 🕒 Date filter
-    if (filter === "today") {
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
-      const end = new Date();
-      end.setHours(23, 59, 59, 999);
-      query.orderDate = { $gte: start, $lte: end };
-    } else if (filter === "yesterday") {
-      const start = new Date();
-      start.setDate(start.getDate() - 1);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date();
-      end.setDate(end.getDate() - 1);
-      end.setHours(23, 59, 59, 999);
-      query.orderDate = { $gte: start, $lte: end };
-    } else if (filter === "week") {
-      const start = new Date();
-      start.setDate(start.getDate() - 7);
-      query.orderDate = { $gte: start };
-    } else if (filter === "month") {
-      const start = new Date();
-      start.setMonth(start.getMonth() - 1);
-      query.orderDate = { $gte: start };
+    // 1. Check if Frontend sent a direct $gte/$lte object
+    if (orderDate && typeof orderDate === 'object') {
+      query.createdAt = {}; // Still use createdAt for backend consistency
+      if (orderDate.$gte) query.createdAt.$gte = new Date(orderDate.$gte);
+      if (orderDate.$lte) query.createdAt.$lte = new Date(orderDate.$lte);
+    } 
+    // 2. Fallback to the 'filter' string logic (today, week, etc.)
+    else if (filter) {
+      const now = new Date();
+      if (filter === "today") {
+        query.createdAt = { 
+          $gte: new Date(now.setHours(0,0,0,0)), 
+          $lte: new Date(now.setHours(23,59,59,999)) 
+        };
+      } else if (filter === "yesterday") {
+        const yesterday = new Date(now);
+        yesterday.setDate(now.getDate() - 1);
+        query.createdAt = { 
+          $gte: new Date(yesterday.setHours(0,0,0,0)), 
+          $lte: new Date(yesterday.setHours(23,59,59,999)) 
+        };
+      } else if (filter === "week") {
+        const weekAgo = new Date(now);
+        weekAgo.setDate(now.getDate() - 7);
+        query.createdAt = { $gte: weekAgo.setHours(0,0,0,0) };
+      } else if (filter === "month") {
+        const monthAgo = new Date(now);
+        monthAgo.setMonth(now.getMonth() - 1);
+        query.createdAt = { $gte: monthAgo.setHours(0,0,0,0) };
+      }
     }
 
-    // 🧾 Order ID search
-    if (orderId && orderId.trim() !== "") {
-      query._id = orderId.trim();
-    }
-
-    // 👤 Customer filter (name or email)
-    if (customer && customer.trim() !== "") {
+    // --- OTHER FILTERS ---
+    if (orderId) query._id = orderId.trim();
+    
+    if (customer) {
       query.$or = [
         { "userInfo.name": { $regex: customer, $options: "i" } },
-        { "userInfo.email": { $regex: customer, $options: "i" } },
+        { "userInfo.email": { $regex: customer, $options: "i" } }
       ];
     }
 
-    // 🍎 Product title filter (within cartItems array)
-    if (title && title.trim() !== "") {
-      query.cartItems = {
-        $elemMatch: {
-          title: { $regex: title, $options: "i" },
-        },
-      };
-    }
+    if (status && status !== "all") query.orderStatus = status;
 
-    // 🚚 Order status filter
-    if (status && status !== "all") {
-      query.orderStatus = status;
-    }
-
-    // 💰 Payment status filter
-    if (paymentStatus && paymentStatus.trim() !== "") {
-      query.paymentStatus = { $regex: paymentStatus, $options: "i" };
-    }
-
-    // 💸 Order amount range filter
     if (minAmount || maxAmount) {
       query.totalAmount = {};
       if (minAmount) query.totalAmount.$gte = Number(minAmount);
       if (maxAmount) query.totalAmount.$lte = Number(maxAmount);
     }
 
-    console.log("🧾 Final query:", JSON.stringify(query, null, 2));
-
     const orders = await Order.find(query).sort({ createdAt: -1 });
-
-    if (!orders.length) {
-      return res.status(404).json({
-        success: false,
-        message: "No orders found for the selected filter!",
-      });
-    }
 
     res.status(200).json({
       success: true,
       data: orders,
     });
   } catch (e) {
-    console.error("❌ Error fetching orders:", e);
-    res.status(500).json({
-      success: false,
-      message: "Some error occurred while fetching orders.",
-    });
+    res.status(500).json({ success: false, message: "Logistics Sync Error" });
   }
 };
 
