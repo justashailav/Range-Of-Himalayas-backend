@@ -43,3 +43,5 @@ router.get("/track/:id", trackOrder);
 
 // 🔴 ALWAYS KEEP THIS LAST
 router.get("/:id", getOrderDetails);
+
+export default router;
