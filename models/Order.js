@@ -21,6 +21,12 @@ const orderSchema = new mongoose.Schema(
         weight: {
           type: String,
           enum: [
+            "50g",
+            "100g",
+            "120g",
+            "150g",
+            "175g",
+            "200g",
             "250g",
             "500g",
             "750g",
@@ -31,6 +37,9 @@ const orderSchema = new mongoose.Schema(
             "10kg",
             "12kg",
             "15kg",
+            "200ml",
+            "500ml",
+            "1L",
           ],
           required: true,
         },
