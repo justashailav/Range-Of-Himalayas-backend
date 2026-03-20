@@ -20,12 +20,18 @@ const wishListSchema = new mongoose.Schema(
         },
         size: {
           type: String,
-          enum: ["Small", "Medium", "Large",""],
-          default:""
+          enum: ["Small", "Medium", "Large", ""],
+          default: "",
         },
         weight: {
           type: String,
           enum: [
+            "50g",
+            "100g",
+            "120g",
+            "150g",
+            "175g",
+            "200g",
             "250g",
             "500g",
             "750g",
@@ -36,13 +42,16 @@ const wishListSchema = new mongoose.Schema(
             "10kg",
             "12kg",
             "15kg",
+            "200ml",
+            "500ml",
+            "1L",
           ],
           required: true,
         },
       },
     ],
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export const WishList = mongoose.model("WishList", wishListSchema);
