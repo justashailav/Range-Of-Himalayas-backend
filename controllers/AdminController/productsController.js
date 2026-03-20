@@ -43,6 +43,12 @@ export const addProduct = async (req, res) => {
     }
 
     const allowedWeights = [
+      "50g",
+      "100g",
+      "120g",
+      "150g",
+      "175g",
+      "200g",
       "250g",
       "500g",
       "750g",
@@ -53,6 +59,9 @@ export const addProduct = async (req, res) => {
       "10kg",
       "12kg",
       "15kg",
+      "200ml",
+      "500ml",
+      "1L",
     ];
 
     const normalizedVariants = parsedVariants

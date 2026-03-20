@@ -80,11 +80,15 @@ const variantSchema = new mongoose.Schema({
     enum: ["Small", "Medium", "Large", ""],
     default: "",
   },
-
-  // Required → for both fruits & dry fruits
   weight: {
     type: String,
     enum: [
+      "50g",
+      "100g",
+      "120g",
+      "150g",
+      "175g",
+      "200g",
       "250g",
       "500g",
       "750g",
@@ -95,6 +99,9 @@ const variantSchema = new mongoose.Schema({
       "10kg",
       "12kg",
       "15kg",
+      "200ml",
+      "500ml",
+      "1L",
     ],
     required: true,
   },
@@ -114,24 +121,27 @@ const variantSchema = new mongoose.Schema({
     default: 0,
   },
 });
-
-/**
- * NUTRITION SCHEMA
- */
 const nutritionSchema = new mongoose.Schema({
   calories: { type: String, default: "" },
+  energy: { type: String, default: "" },
+  calcium: { type: String, default: "" },
+  iron: { type: String, default: "" },
+  magnesium: { type: String, default: "" },
+  calcium: { type: String, default: "" },
+  sodium: { type: String, default: "" },
   carbohydrates: { type: String, default: "" },
   fiber: { type: String, default: "" },
   sugar: { type: String, default: "" },
   vitaminC: { type: String, default: "" },
+  vitaminE: { type: String, default: "" },
   potassium: { type: String, default: "" },
   protein: { type: String, default: "" },
   fat: { type: String, default: "" },
+  fulvicacid:{ type: String, default: "" },
+  humicacid:{ type: String, default: "" },
+  minerals:{ type: String, default: "" }
 });
 
-/**
- * DETAILS SCHEMA
- */
 const detailsSchema = new mongoose.Schema({
   origin: { type: String, default: "" },
   variety: { type: String, default: "" },
