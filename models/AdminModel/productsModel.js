@@ -127,7 +127,6 @@ const nutritionSchema = new mongoose.Schema({
   calcium: { type: String, default: "" },
   iron: { type: String, default: "" },
   magnesium: { type: String, default: "" },
-  calcium: { type: String, default: "" },
   sodium: { type: String, default: "" },
   carbohydrates: { type: String, default: "" },
   fiber: { type: String, default: "" },
