@@ -1,10 +1,21 @@
 import axios from "axios";
 
-export const sendEmail = async ({ email, subject, message }) => {
+export const sendEmail = async ({
+  email,
+  subject,
+  message,
+  attachments = [],
+}) => {
   try {
     if (!process.env.BREVO_API_KEY) {
       throw new Error("BREVO_API_KEY is missing");
     }
+
+    // 🔥 Convert attachments to Brevo format
+    const formattedAttachments = attachments.map((file) => ({
+      name: file.filename,
+      content: file.content.toString("base64"), // VERY IMPORTANT
+    }));
 
     const response = await axios.post(
       "https://api.brevo.com/v3/smtp/email",
@@ -16,6 +27,7 @@ export const sendEmail = async ({ email, subject, message }) => {
         to: [{ email }],
         subject: subject,
         htmlContent: message,
+        attachment: formattedAttachments, // ✅ add this
       },
       {
         headers: {
