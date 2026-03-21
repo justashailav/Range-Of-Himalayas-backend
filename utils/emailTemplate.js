@@ -33,15 +33,35 @@ export function generateForgotPasswordEmailTemplate(ResetPasswordUrl) {
 }
 
 export const generateOrderEmailTemplate = (order, products = []) => {
-  const { _id, cartItems, boxes = [], totalAmount, paymentMethod, orderDate } = order;
+  const {
+    _id,
+    cartItems = [],
+    boxes = [],
+    totalAmount,
+    paymentMethod,
+    orderDate,
+  } = order;
 
-  // Create a map for quick product lookup by _id
+  // ✅ Safe Date Handling
+  let formattedDate = "N/A";
+  if (orderDate) {
+    const d = new Date(orderDate);
+    if (!isNaN(d)) {
+      formattedDate = d.toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+    }
+  }
+
+  // Create product lookup map
   const productsMap = {};
   products.forEach((prod) => {
     productsMap[prod._id.toString()] = prod;
   });
 
-  // Cart items HTML
+  // 🛒 Cart Items HTML
   let itemsHtml = "<ul style='padding-left:20px;'>";
   cartItems.forEach((item) => {
     const product = productsMap[item.productId?.toString()] || {};
@@ -55,10 +75,11 @@ export const generateOrderEmailTemplate = (order, products = []) => {
   });
   itemsHtml += "</ul>";
 
-  // Boxes and box items HTML with size-based pricing
+  // 📦 Boxes HTML
   let boxesHtml = "";
   if (boxes.length > 0) {
     boxesHtml += "<h4>Ordered Boxes:</h4><ul style='padding-left:20px;'>";
+
     boxes.forEach((box) => {
       boxesHtml += `
         <li style="margin-bottom: 12px;">
@@ -70,10 +91,11 @@ export const generateOrderEmailTemplate = (order, products = []) => {
           const product = productsMap[item.productId?.toString()] || {};
           const title = item.title || product.title || "Item";
 
-          // Get price from the product's sizes array based on item.size
           let price = "N/A";
           if (product.sizes && Array.isArray(product.sizes)) {
-            const sizeObj = product.sizes.find((s) => s.size === item.size);
+            const sizeObj = product.sizes.find(
+              (s) => s.size === item.size
+            );
             if (sizeObj) {
               price = sizeObj.salesPrice || sizeObj.price || "N/A";
             }
@@ -87,16 +109,21 @@ export const generateOrderEmailTemplate = (order, products = []) => {
       } else {
         boxesHtml += `<li>No items listed inside this box</li>`;
       }
+
       boxesHtml += `</ul></li>`;
     });
+
     boxesHtml += "</ul>";
   }
 
+  // 📧 Final Email Template
   return `
     <div style="font-family: Arial, sans-serif; color: #333;">
+      
       <h2 style="color: #2c3e50;">Thank you for your order!</h2>
+      
       <p>Your order ID is <strong>${_id}</strong>.</p>
-      <p>Order Date: ${new Date(orderDate).toLocaleDateString()}</p>
+      <p>Order Date: <strong>${formattedDate}</strong></p>
 
       <h3>Order Details:</h3>
       ${itemsHtml}
@@ -106,12 +133,16 @@ export const generateOrderEmailTemplate = (order, products = []) => {
         Total Amount: ₹${totalAmount}
       </p>
 
-      <p>Payment Method: <strong>${paymentMethod.toUpperCase()}</strong></p>
+      <p>Payment Method: <strong>${(paymentMethod || "").toUpperCase()}</strong></p>
 
       <p>If you have any questions, reply to this email. We're happy to help!</p>
 
       <hr style="margin: 30px 0;" />
-      <p style="font-size: 12px; color: #999;">© ${new Date().getFullYear()} RANGE OF HIMALAYAS. All rights reserved.</p>
+
+      <p style="font-size: 12px; color: #999;">
+        © ${new Date().getFullYear()} RANGE OF HIMALAYAS. All rights reserved.
+      </p>
+
     </div>
   `;
 };
