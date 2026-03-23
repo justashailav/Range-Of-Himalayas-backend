@@ -36,45 +36,77 @@ export const chatWithBot = (req, res) => {
     },
 
     // PAHADI RAJMA
-    {
-      keywords: ["rajma", "pahadi", "kidney beans"],
-      answer:
-        "Our Pahadi Rajma is sourced directly from Himalayan farmers. It is natural, rich in protein, and has an authentic taste.",
-    },
-    {
-      keywords: ["rajma benefits", "rajma health"],
-      answer:
-        "Pahadi Rajma is rich in protein, fiber, and essential minerals, making it great for digestion and overall health.",
-    },
+    // 🌿 SEA BUCKTHORN HONEY
+{
+  keywords: ["sea buckthorn honey", "himalayan honey", "natural honey"],
+  answer:
+    "Our Sea Buckthorn Honey is raw, unprocessed, and sourced from the Himalayan valleys. It combines the richness of wild honey with the powerful nutrients of sea buckthorn.",
+},
+{
+  keywords: ["sea buckthorn honey benefits", "honey benefits"],
+  answer:
+    "Sea Buckthorn Honey is rich in antioxidants, boosts immunity, improves digestion, and supports skin health naturally.",
+},
 
-    // DRY APRICOT
-    {
-      keywords: ["apricot", "khubani", "dry apricot"],
-      answer:
-        "Our dry apricots are sun-dried, chemical-free, and rich in vitamins, iron, and antioxidants.",
-    },
-    {
-      keywords: ["apricot benefits", "khubani benefits"],
-      answer:
-        "Dry apricots help improve digestion, boost immunity, and are good for skin and eye health.",
-    },
+// 🌿 SEA BUCKTHORN PULP
+{
+  keywords: ["sea buckthorn pulp", "sea buckthorn juice", "lehsun fruit pulp"],
+  answer:
+    "Our Sea Buckthorn Pulp is made from freshly harvested berries from the Himalayas. It is pure, nutrient-dense, and free from additives.",
+},
+{
+  keywords: ["sea buckthorn pulp benefits", "sea buckthorn juice benefits"],
+  answer:
+    "Sea Buckthorn Pulp is loaded with Vitamin C, helps boost immunity, improves skin glow, and supports overall wellness.",
+},
 
-    // 🌾 RED RICE (NEW)
-    {
-      keywords: ["red rice", "lal chawal", "red rice pahadi"],
-      answer:
-        "Our Red Rice is traditionally grown in the Himalayan region. It is unpolished, rich in fiber, and has a natural earthy flavor.",
-    },
-    {
-      keywords: ["red rice benefits", "lal chawal benefits"],
-      answer:
-        "Red Rice is high in fiber and antioxidants. It helps in better digestion, weight management, and maintaining heart health.",
-    },
-    {
-      keywords: ["how to cook red rice", "red rice cooking"],
-      answer:
-        "Red Rice should be soaked for 30 minutes and cooked in a 1:2 ratio (rice:water). It takes slightly longer to cook than white rice.",
-    },
+// 🌿 APRICOT OIL
+{
+  keywords: ["apricot oil", "khubani oil", "apricot kernel oil"],
+  answer:
+    "Our Apricot Oil is cold-pressed from high-quality Himalayan apricot kernels. It is lightweight, pure, and highly nourishing.",
+},
+{
+  keywords: ["apricot oil benefits", "khubani oil benefits"],
+  answer:
+    "Apricot Oil deeply moisturizes skin, improves elasticity, promotes hair growth, and adds natural shine to hair.",
+},
+
+// 🌿 DRY APRICOT
+{
+  keywords: ["dry apricot", "khubani", "dried apricot"],
+  answer:
+    "Our Dry Apricots are naturally sun-dried in the Himalayas without any chemicals, preserving their natural sweetness and nutrients.",
+},
+{
+  keywords: ["dry apricot benefits", "khubani benefits"],
+  answer:
+    "Dry Apricots are rich in iron, fiber, and antioxidants. They support digestion, improve skin health, and boost energy levels.",
+},
+
+// 🌿 KALA ZEERA
+{
+  keywords: ["kala zeera", "black cumin", "himalayan jeera"],
+  answer:
+    "Our Kala Zeera is sourced from high-altitude Himalayan regions. It has a strong aroma and is widely used in traditional cooking and medicine.",
+},
+{
+  keywords: ["kala zeera benefits", "black cumin benefits"],
+  answer:
+    "Kala Zeera helps improve digestion, supports metabolism, and has antioxidant and anti-inflammatory properties.",
+},
+
+// 🌿 SEA BUCKTHORN TEA
+{
+  keywords: ["sea buckthorn tea", "herbal tea himalaya"],
+  answer:
+    "Our Sea Buckthorn Tea is a refreshing herbal infusion made from Himalayan sea buckthorn, known for its tangy taste and health benefits.",
+},
+{
+  keywords: ["sea buckthorn tea benefits"],
+  answer:
+    "Sea Buckthorn Tea boosts immunity, detoxifies the body, and promotes healthy skin and digestion.",
+},
 
     // ORGANIC / QUALITY
     {
