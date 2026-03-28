@@ -99,6 +99,7 @@ const variantSchema = new mongoose.Schema({
       "10kg",
       "12kg",
       "15kg",
+      "100ml",
       "200ml",
       "500ml",
       "1L",

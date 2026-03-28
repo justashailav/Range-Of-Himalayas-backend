@@ -276,7 +276,7 @@ export const capturePayment = async (req, res) => {
       razorpay_signature,
     } = req.body;
 
-    console.log("========== RAZORPAY VERIFY START ==========");
+    
 
     const order = await Order.findById(orderId);
 
@@ -394,6 +394,37 @@ export const capturePayment = async (req, res) => {
   }
 };
 
+
+const triggerShipment = async () => {
+  try {
+    console.log("🚚 Creating Shiprocket shipment...");
+
+    const shipment = await createShipment(order);
+
+    // Save shipment details
+    order.shipmentId = shipment.shipment_id;
+    order.awbCode = shipment.awb_code;
+    order.trackingUrl = `https://shiprocket.co/tracking/${shipment.awb_code}`;
+
+    order.orderStatus = "shipped";
+    order.statusHistory.push({
+      status: "shipped",
+      updatedAt: new Date(),
+    });
+
+    await order.save();
+
+    console.log("✅ Shipment created:", shipment.awb_code);
+  } catch (shippingError) {
+    console.error(
+      "❌ Shiprocket Error (Non-blocking):",
+      shippingError.response?.data || shippingError.message
+    );
+  }
+};
+
+// ✅ Trigger shipment in background
+triggerShipment();
 export const getAllOrdersByUserId = async (req, res) => {
   try {
     const { userId } = req.params;
