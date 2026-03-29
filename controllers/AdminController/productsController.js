@@ -66,7 +66,7 @@ export const addProduct = async (req, res) => {
       "200ml",
       "500ml",
       "1L",
-      "500ml (Honey) 100ml (Apricot Oil)"
+      "500ml (Honey) 100ml (Apricot Oil)",
     ];
 
     const normalizedVariants = parsedVariants
@@ -85,23 +85,22 @@ export const addProduct = async (req, res) => {
       parsedNutrition = nutrition ? JSON.parse(nutrition) : {};
     } catch {}
 
-    let parsedComboNutrition = [];
+    let parsedComboNutrition = { items: [] };
 
-    try {
-      parsedComboNutrition = comboNutrition ? JSON.parse(comboNutrition) : [];
-    } catch {
-      parsedComboNutrition = [];
-    }
-
+try {
+  parsedComboNutrition = comboNutrition
+    ? JSON.parse(comboNutrition)
+    : { items: [] };
+} catch {}
     // 🟢 VALIDATE COMBO
-const isComboBool = isCombo === "true" || isCombo === true;
+    const isComboBool = isCombo === "true" || isCombo === true;
 
-if (isComboBool && parsedComboNutrition.length === 0) {
-  return res.status(400).json({
-    success: false,
-    message: "Combo must have at least one item",
-  });
-}
+    if (isComboBool && parsedComboNutrition.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Combo must have at least one item",
+      });
+    }
 
     /* ------------------ DETAILS ------------------ */
     let parsedDetails = {};
