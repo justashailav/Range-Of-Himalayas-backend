@@ -30,6 +30,7 @@ const variantSchema = new mongoose.Schema({
       "500ml",
       "1L",
       "500ml (Honey) 100ml (Apricot Oil)",
+      "500ml (Honey) 200ml (Sea Buckthorn Pulp)",
     ],
     required: true,
   },
