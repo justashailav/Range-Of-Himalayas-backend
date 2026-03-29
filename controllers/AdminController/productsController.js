@@ -14,6 +14,8 @@ export const addProduct = async (req, res) => {
       view360,
       variants,
       customBoxPrices,
+      isCombo,
+      comboNutrition,
     } = req.body;
 
     const files = req.files || [];
@@ -36,7 +38,8 @@ export const addProduct = async (req, res) => {
     let parsedVariants = [];
     if (variants) {
       try {
-        parsedVariants = typeof variants === "string" ? JSON.parse(variants) : variants;
+        parsedVariants =
+          typeof variants === "string" ? JSON.parse(variants) : variants;
       } catch {
         parsedVariants = [];
       }
@@ -66,8 +69,8 @@ export const addProduct = async (req, res) => {
     ];
 
     const normalizedVariants = parsedVariants
-      .filter(v => v?.weight && allowedWeights.includes(v.weight))
-      .map(v => ({
+      .filter((v) => v?.weight && allowedWeights.includes(v.weight))
+      .map((v) => ({
         size: v.size || "",
         weight: v.weight,
         stock: Number(v.stock) || 0,
@@ -79,6 +82,14 @@ export const addProduct = async (req, res) => {
     let parsedNutrition = {};
     try {
       parsedNutrition = nutrition ? JSON.parse(nutrition) : {};
+    } catch {}
+
+    let parsedComboNutrition = { items: [] };
+
+    try {
+      parsedComboNutrition = comboNutrition
+        ? JSON.parse(comboNutrition)
+        : { items: [] };
     } catch {}
 
     /* ------------------ DETAILS ------------------ */
@@ -104,14 +115,16 @@ export const addProduct = async (req, res) => {
     /* ------------------ IMAGES ------------------ */
     const mainImage = await uploadMedia(files[0].path);
     const gallery = await Promise.all(
-      files.slice(1).map(f => uploadMedia(f.path))
+      files.slice(1).map((f) => uploadMedia(f.path)),
     );
 
     /* ------------------ SAVE ------------------ */
     const product = new Products({
       title,
       description,
+      isCombo: isCombo === "true" || isCombo === true,
       nutrition: parsedNutrition,
+      comboNutrition: parsedComboNutrition,
       details: parsedDetails,
       rating: Number(rating) || 0,
       reviewsCount: Number(reviewsCount) || 0,
@@ -120,7 +133,7 @@ export const addProduct = async (req, res) => {
       variants: normalizedVariants,
       customBoxPrices: parsedCustomBoxPrices,
       image: mainImage.secure_url,
-      images: gallery.map(i => i.secure_url),
+      images: gallery.map((i) => i.secure_url),
     });
 
     await product.save();
@@ -138,7 +151,6 @@ export const addProduct = async (req, res) => {
     });
   }
 };
-
 
 export const getAllProducts = async (req, res) => {
   try {
@@ -159,7 +171,6 @@ export const getAllProducts = async (req, res) => {
   }
 };
 
-
 export const editProduct = async (req, res) => {
   try {
     const { id } = req.params;
@@ -178,6 +189,8 @@ export const editProduct = async (req, res) => {
       price,
       salesPrice,
       stock,
+      isCombo,
+      comboNutrition,
     } = req.body;
 
     // ---------------- FIND PRODUCT ----------------
@@ -208,6 +221,7 @@ export const editProduct = async (req, res) => {
     const parsedVariants = safeParse(variants, []);
     const parsedCustomBoxPrices = safeParse(customBoxPrices, []);
     const parsedBadges = safeParse(badges, []);
+    const parsedComboNutrition = safeParse(comboNutrition, { items: [] });
 
     // ---------------- IMAGE HANDLING ----------------
     const files = req.files || [];
@@ -217,7 +231,7 @@ export const editProduct = async (req, res) => {
 
     if (files.length > 0) {
       const uploaded = await Promise.all(
-        files.map((file) => uploadMedia(file.path))
+        files.map((file) => uploadMedia(file.path)),
       );
 
       // First image replaces main image
@@ -235,8 +249,8 @@ export const editProduct = async (req, res) => {
     let normalizedVariants;
     if (Array.isArray(parsedVariants)) {
       normalizedVariants = parsedVariants.map((v) => ({
-        size: v?.size || "",                 // OPTIONAL
-        weight: v?.weight || "",             // REQUIRED by schema
+        size: v?.size || "", // OPTIONAL
+        weight: v?.weight || "", // REQUIRED by schema
         stock: Number(v?.stock) || 0,
         price: Number(v?.price) || 0,
         salesPrice: Number(v?.salesPrice) || 0,
@@ -265,41 +279,40 @@ export const editProduct = async (req, res) => {
 
     // ---------------- UPDATE FIELDS (ONLY IF PROVIDED) ----------------
     if (typeof title !== "undefined") product.title = title;
-    if (typeof description !== "undefined")
-      product.description = description;
+    if (typeof description !== "undefined") product.description = description;
+    if (typeof isCombo !== "undefined") {
+      product.isCombo = isCombo === "true" || isCombo === true;
+    }
 
+    // 🟢 COMBO NUTRITION
+    if (parsedComboNutrition !== undefined) {
+      product.comboNutrition = parsedComboNutrition || { items: [] };
+    }
     if (parsedNutrition !== undefined)
       product.nutrition = parsedNutrition || {};
 
-    if (parsedDetails !== undefined)
-      product.details = parsedDetails || {};
+    if (parsedDetails !== undefined) product.details = parsedDetails || {};
 
-    if (typeof rating !== "undefined")
-      product.rating = Number(rating) || 0;
+    if (typeof rating !== "undefined") product.rating = Number(rating) || 0;
 
     if (typeof reviewsCount !== "undefined")
       product.reviewsCount = Number(reviewsCount) || 0;
 
-    if (typeof finalBadges !== "undefined")
-      product.badges = finalBadges;
+    if (typeof finalBadges !== "undefined") product.badges = finalBadges;
 
-    if (typeof view360 !== "undefined")
-      product.view360 = view360 || "";
+    if (typeof view360 !== "undefined") product.view360 = view360 || "";
 
-    if (normalizedVariants !== undefined)
-      product.variants = normalizedVariants;
+    if (normalizedVariants !== undefined) product.variants = normalizedVariants;
 
     if (normalizedCustomBoxPrices !== undefined)
       product.customBoxPrices = normalizedCustomBoxPrices;
 
-    if (typeof price !== "undefined")
-      product.price = Number(price) || 0;
+    if (typeof price !== "undefined") product.price = Number(price) || 0;
 
     if (typeof salesPrice !== "undefined")
       product.salesPrice = Number(salesPrice) || 0;
 
-    if (typeof stock !== "undefined")
-      product.stock = Number(stock) || 0;
+    if (typeof stock !== "undefined") product.stock = Number(stock) || 0;
 
     // ---------------- IMAGES ----------------
     product.image = mainImage;
@@ -321,8 +334,6 @@ export const editProduct = async (req, res) => {
     });
   }
 };
-
-
 
 export const deleteProduct = async (req, res) => {
   try {
