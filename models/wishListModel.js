@@ -46,6 +46,7 @@ const wishListSchema = new mongoose.Schema(
             "200ml",
             "500ml",
             "1L",
+            "500ml (Honey) 100ml (Apricot Oil)"
           ],
           required: true,
         },

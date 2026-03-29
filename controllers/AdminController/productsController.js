@@ -66,6 +66,7 @@ export const addProduct = async (req, res) => {
       "200ml",
       "500ml",
       "1L",
+      "500ml (Honey) 100ml (Apricot Oil)"
     ];
 
     const normalizedVariants = parsedVariants

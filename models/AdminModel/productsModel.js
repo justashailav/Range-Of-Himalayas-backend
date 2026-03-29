@@ -29,6 +29,7 @@ const variantSchema = new mongoose.Schema({
       "200ml",
       "500ml",
       "1L",
+      "500ml (Honey) 100ml (Apricot Oil)"
     ],
     required: true,
   },
@@ -90,10 +91,6 @@ const customBoxPriceSchema = new mongoose.Schema({
 });
 const comboNutritionItemSchema = new mongoose.Schema({
   name: { type: String, required: true },
-
-  // ❌ REMOVE THIS
-  // unit: { type: String },
-
   nutrition: {
     type: nutritionSchema,
     default: () => ({}),
