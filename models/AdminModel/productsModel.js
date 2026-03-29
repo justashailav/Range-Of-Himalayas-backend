@@ -117,7 +117,7 @@ const productsSchema = new mongoose.Schema(
       default: () => ({}),
     },
     comboNutrition: {
-      type: comboNutritionSchema,
+      type: comboNutritionItemSchema,
       default: () => ({ items: [] }),
     },
 
