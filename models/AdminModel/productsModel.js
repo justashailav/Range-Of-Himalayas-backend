@@ -88,18 +88,16 @@ const customBoxPriceSchema = new mongoose.Schema({
     required: true,
   },
 });
-const comboNutritionSchema = new mongoose.Schema({
-  items: [
-    {
-      name: { type: String, required: true }, // Honey / Apricot Oil
-      unit: { type: String, default: "" }, // per 100g / 100ml
+const comboNutritionItemSchema = new mongoose.Schema({
+  name: { type: String, required: true },
 
-      nutrition: {
-        type: nutritionSchema,
-        default: () => ({}),
-      },
-    },
-  ],
+  // ❌ REMOVE THIS
+  // unit: { type: String },
+
+  nutrition: {
+    type: nutritionSchema,
+    default: () => ({}),
+  },
 });
 const productsSchema = new mongoose.Schema(
   {
