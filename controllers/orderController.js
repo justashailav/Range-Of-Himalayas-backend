@@ -276,8 +276,6 @@ export const capturePayment = async (req, res) => {
       razorpay_signature,
     } = req.body;
 
-    
-
     const order = await Order.findById(orderId);
 
     if (!order) {

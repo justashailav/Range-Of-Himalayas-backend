@@ -27,7 +27,7 @@ export const applyCoupon = async (req, res) => {
       });
     }
     if (coupon.maxUniqueUsers && coupon.maxUniqueUsers > 0) {
-      const uniqueUsers = await Order.distinct("userId", { code: coupon._id });
+      const uniqueUsers = await Order.distinct("userId", { code: coupon._id,paymentStatus: "paid", });
       if (
         uniqueUsers.length >= coupon.maxUniqueUsers &&
         !uniqueUsers.includes(userId)
@@ -41,6 +41,7 @@ export const applyCoupon = async (req, res) => {
     const userUsedCount = await Order.countDocuments({
       userId,
       code: coupon._id,
+      paymentStatus: "paid",
     });
 
     if (userUsedCount >= coupon.usageLimit) {
