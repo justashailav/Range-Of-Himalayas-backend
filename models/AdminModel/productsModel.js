@@ -89,7 +89,7 @@ const customBoxPriceSchema = new mongoose.Schema({
     required: true,
   },
 });
-const comboNutritionItemSchema = new mongoose.Schema({
+const comboNutritionSchema = new mongoose.Schema({
   name: { type: String, required: true },
   nutrition: {
     type: nutritionSchema,
@@ -117,7 +117,7 @@ const productsSchema = new mongoose.Schema(
       default: () => ({}),
     },
     comboNutrition: {
-      type: comboNutritionItemSchema,
+      type: comboNutritionSchema,
       default: () => ({ items: [] }),
     },
 
