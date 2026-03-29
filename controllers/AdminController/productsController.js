@@ -85,22 +85,26 @@ export const addProduct = async (req, res) => {
       parsedNutrition = nutrition ? JSON.parse(nutrition) : {};
     } catch {}
 
-    let parsedComboNutrition = { items: [] };
+    let parsedComboNutrition = [];
 
 try {
   parsedComboNutrition = comboNutrition
-    ? JSON.parse(comboNutrition)
-    : { items: [] };
-} catch {}
+    ? typeof comboNutrition === "string"
+      ? JSON.parse(comboNutrition)
+      : comboNutrition
+    : [];
+} catch {
+  parsedComboNutrition = [];
+}
     // 🟢 VALIDATE COMBO
     const isComboBool = isCombo === "true" || isCombo === true;
 
-    if (isComboBool && parsedComboNutrition.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Combo must have at least one item",
-      });
-    }
+if (isComboBool && parsedComboNutrition.length === 0) {
+  return res.status(400).json({
+    success: false,
+    message: "Combo must have at least one item",
+  });
+}
 
     /* ------------------ DETAILS ------------------ */
     let parsedDetails = {};

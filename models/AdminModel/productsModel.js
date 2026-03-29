@@ -29,7 +29,7 @@ const variantSchema = new mongoose.Schema({
       "200ml",
       "500ml",
       "1L",
-      "500ml (Honey) 100ml (Apricot Oil)"
+      "500ml (Honey) 100ml (Apricot Oil)",
     ],
     required: true,
   },
@@ -64,9 +64,9 @@ const nutritionSchema = new mongoose.Schema({
   potassium: { type: String, default: "" },
   protein: { type: String, default: "" },
   fat: { type: String, default: "" },
-  fulvicacid:{ type: String, default: "" },
-  humicacid:{ type: String, default: "" },
-  minerals:{ type: String, default: "" }
+  fulvicacid: { type: String, default: "" },
+  humicacid: { type: String, default: "" },
+  minerals: { type: String, default: "" },
 });
 
 const detailsSchema = new mongoose.Schema({
@@ -89,13 +89,15 @@ const customBoxPriceSchema = new mongoose.Schema({
     required: true,
   },
 });
-const comboNutritionSchema = new mongoose.Schema({
+const comboItemSchema = new mongoose.Schema({
   name: { type: String, required: true },
+  unit: { type: String, default: "" },
   nutrition: {
     type: nutritionSchema,
     default: () => ({}),
   },
 });
+
 const productsSchema = new mongoose.Schema(
   {
     title: {
@@ -117,8 +119,8 @@ const productsSchema = new mongoose.Schema(
       default: () => ({}),
     },
     comboNutrition: {
-      type: comboNutritionSchema,
-      default: () => ({ items: [] }),
+      type: [comboItemSchema],
+      default: [],
     },
 
     details: {
@@ -167,7 +169,7 @@ const productsSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 export const Products = mongoose.model("Products", productsSchema);
