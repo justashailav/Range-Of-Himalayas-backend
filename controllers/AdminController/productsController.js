@@ -69,7 +69,8 @@ export const addProduct = async (req, res) => {
       "500ml",
       "1L",
       "500ml (Honey) 100ml (Apricot Oil)",
-      "500ml (Honey) 200ml (Sea Buckthorn Pulp)"
+      "500ml (Honey) 200ml (Sea Buckthorn Pulp)",
+      "500ml (Honey) 10g (Himalayan Shilajit)"
     ];
 
     const normalizedVariants = parsedVariants
@@ -90,24 +91,34 @@ export const addProduct = async (req, res) => {
 
     let parsedComboNutrition = [];
 
-try {
-  parsedComboNutrition = comboNutrition
-    ? typeof comboNutrition === "string"
-      ? JSON.parse(comboNutrition)
-      : comboNutrition
-    : [];
-} catch {
-  parsedComboNutrition = [];
-}
+    try {
+      parsedComboNutrition = comboNutrition
+        ? typeof comboNutrition === "string"
+          ? JSON.parse(comboNutrition)
+          : comboNutrition
+        : [];
+    } catch {
+      parsedComboNutrition = [];
+    }
     // 🟢 VALIDATE COMBO
     const isComboBool = isCombo === "true" || isCombo === true;
 
-if (isComboBool && parsedComboNutrition.length === 0) {
-  return res.status(400).json({
-    success: false,
-    message: "Combo must have at least one item",
-  });
-}
+    // ✅ CLEAN FIRST
+    if (!isComboBool) {
+      parsedComboNutrition = [];
+    } else {
+      parsedComboNutrition = parsedComboNutrition.filter(
+        (item) => item.name && item.name.trim() !== "",
+      );
+    }
+
+    // ✅ THEN VALIDATE
+    if (isComboBool && parsedComboNutrition.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Combo must have at least one valid item",
+      });
+    }
 
     /* ------------------ DETAILS ------------------ */
     let parsedDetails = {};
