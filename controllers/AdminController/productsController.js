@@ -46,6 +46,8 @@ export const addProduct = async (req, res) => {
     }
 
     const allowedWeights = [
+      "10g",
+      "20g",
       "50g",
       "100g",
       "120g",

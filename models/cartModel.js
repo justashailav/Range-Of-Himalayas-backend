@@ -33,6 +33,8 @@ const cartSchema = new mongoose.Schema(
         weight: {
           type: String,
           enum: [
+            "10g",
+            "20g",
             "50g",
             "100g",
             "120g",
@@ -54,7 +56,7 @@ const cartSchema = new mongoose.Schema(
             "500ml",
             "1L",
             "500ml (Honey) 100ml (Apricot Oil)",
-            "500ml (Honey) 200ml (Sea Buckthorn Pulp)"
+            "500ml (Honey) 200ml (Sea Buckthorn Pulp)",
           ],
           required: true,
         },

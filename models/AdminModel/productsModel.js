@@ -9,6 +9,8 @@ const variantSchema = new mongoose.Schema({
   weight: {
     type: String,
     enum: [
+      "10g",
+      "20g",
       "50g",
       "100g",
       "120g",
