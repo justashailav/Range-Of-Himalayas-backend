@@ -72,7 +72,11 @@ export const addProduct = async (req, res) => {
       "500ml (Honey) 200ml (Sea Buckthorn Pulp)",
       "500ml (Honey) 500ml (Sea Buckthorn Pulp)",
       "500ml (Honey) 10g (Himalayan Shilajit)",
-      "500ml (Honey) 20g (Himalayan Shilajit)"
+      "500ml (Honey) 20g (Himalayan Shilajit)",
+      "10g (Himalayan Shilajit) 500ml (Sea Buckthorn Pulp)",
+      "10g (Himalayan Shilajit) 200ml (Sea Buckthorn Pulp)",
+      "20g (Himalayan Shilajit) 200ml (Sea Buckthorn Pulp)",
+      "20g (Himalayan Shilajit) 500ml (Sea Buckthorn Pulp)"
     ];
 
     const normalizedVariants = parsedVariants
