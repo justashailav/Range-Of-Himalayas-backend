@@ -294,12 +294,9 @@
 
 import PDFDocument from "pdfkit";
 
-export const generateInvoicePDFBuffer = (
-  order,
-  products = [],
-  user = {}
-) => {
+export const generateInvoicePDFBuffer = (order, products = [], user = {}) => {
   return new Promise((resolve, reject) => {
+    // Standard A4: 595.28 x 841.89
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     const buffers = [];
 
@@ -307,191 +304,145 @@ export const generateInvoicePDFBuffer = (
     doc.on("end", () => resolve(Buffer.concat(buffers)));
     doc.on("error", reject);
 
-    // --- COLORS ---
-    const primary = "#B23A2E";
-    const dark = "#1a1a1a";
-    const gray = "#777";
-    const light = "#f5f5f5";
-
-    const left = 50;
-    const width = doc.page.width - 100;
+    // --- DESIGN SYSTEM ---
+    const primaryColor = "#B23A2E"; // Deep Himalayan Red
+    const secondaryColor = "#2D3436"; // Dark Slate
+    const mutedColor = "#636E72"; // Grey
+    const borderColor = "#DFE6E9"; // Light Grey Line
+    const tableHeaderColor = "#F8F9FA"; // Soft Background
+    
+    const leftMargin = 50;
+    const rightColumnX = 380;
+    const pageWidth = doc.page.width - 100;
 
     const orderId = order?._id?.toString() || "N/A";
-
     const date = new Date(order.createdAt || order.orderDate);
-    const formattedDate = !isNaN(date)
-      ? date.toLocaleDateString("en-IN")
-      : "N/A";
+    const formattedDate = !isNaN(date) ? date.toLocaleDateString("en-IN") : "N/A";
 
-    // ================= HEADER =================
-    doc
-      .fillColor(primary)
-      .fontSize(22)
-      .font("Helvetica-Bold")
-      .text("RANGE OF HIMALAYAS", left, 40);
+    // ================= HEADER SECTION =================
+    // Brand Logo/Name
+    doc.fillColor(primaryColor).fontSize(24).font("Helvetica-Bold").text("RANGE OF HIMALAYAS", leftMargin, 50);
+    doc.fillColor(mutedColor).fontSize(9).font("Helvetica").text("AUTHENTIC WELLNESS FROM THE PEAKS", leftMargin, 75);
+    
+    // Invoice Label (Top Right)
+    doc.fillColor(secondaryColor).fontSize(28).font("Helvetica-Bold").text("INVOICE", 0, 50, { align: "right", indent: 50 });
+    
+    // Horizontal Divider
+    doc.moveTo(leftMargin, 100).lineTo(545, 100).strokeColor(borderColor).lineWidth(1).stroke();
 
-    doc
-      .fillColor(gray)
-      .fontSize(9)
-      .font("Helvetica")
-      .text("Premium Himalayan Wellness Products", left, 65)
-      .text("www.rangeofhimalayas.co.in", left, 78);
-
-    doc
-      .fillColor(dark)
-      .fontSize(26)
-      .font("Helvetica-Bold")
-      .text("INVOICE", 0, 40, { align: "right" });
-
-    // ================= CUSTOMER =================
-    doc
-      .moveDown(2)
-      .fillColor(gray)
-      .fontSize(10)
-      .font("Helvetica-Bold")
-      .text("BILL TO");
-
-    doc
-      .fillColor(dark)
-      .font("Helvetica")
-      .fontSize(11)
-      .text(user?.name || order.userName || "Customer")
+    // ================= INFO SECTION =================
+    // Left: Customer Details
+    doc.fillColor(primaryColor).fontSize(10).font("Helvetica-Bold").text("BILL TO", leftMargin, 125);
+    doc.fillColor(secondaryColor).fontSize(12).font("Helvetica-Bold").text(user?.name || order.userName || "Customer", leftMargin, 140);
+    
+    doc.fillColor(mutedColor).fontSize(10).font("Helvetica").lineGap(2)
       .text(order.addressInfo?.phone || "")
-      .fontSize(9)
-      .fillColor(gray)
-      .text(
-        `${order.addressInfo?.address || ""}, ${order.addressInfo?.city || ""} - ${order.addressInfo?.pincode || ""}`
-      );
+      .text(`${order.addressInfo?.address || ""}`)
+      .text(`${order.addressInfo?.city || ""} - ${order.addressInfo?.pincode || ""}`);
 
-    // ================= ORDER DETAILS =================
-    doc
-      .fillColor(gray)
-      .font("Helvetica-Bold")
-      .text("ORDER ID:", 350, 120)
-      .text("DATE:", 350, 135)
-      .text("PAYMENT:", 350, 150);
+    // Right: Order Metadata
+    const infoTableY = 125;
+    const labelWidth = 70;
 
-    doc
-      .fillColor(dark)
-      .font("Helvetica")
-      .text(orderId, 430, 120)
-      .text(formattedDate, 430, 135)
-      .text(order.paymentMethod?.toUpperCase() || "COD", 430, 150);
-
-    // ================= TABLE =================
-    let y = 200;
-
-    const drawHeader = () => {
-      doc.rect(left, y, width, 20).fill(dark);
-      doc.fillColor("#fff").fontSize(9).font("Helvetica-Bold");
-
-      doc.text("PRODUCT", left + 10, y + 5);
-      doc.text("PRICE", 320, y + 5, { width: 80, align: "right" });
-      doc.text("QTY", 410, y + 5, { width: 40, align: "center" });
-      doc.text("TOTAL", 460, y + 5, { width: 80, align: "right" });
-
-      y += 25;
+    const drawMetaRow = (label, value, y) => {
+      doc.fillColor(mutedColor).font("Helvetica-Bold").fontSize(9).text(label, rightColumnX, y);
+      doc.fillColor(secondaryColor).font("Helvetica").fontSize(9).text(value, rightColumnX + labelWidth, y, { align: "right", width: 95 });
     };
 
-    drawHeader();
+    drawMetaRow("Invoice No:", orderId.slice(-8).toUpperCase(), infoTableY);
+    drawMetaRow("Order Date:", formattedDate, infoTableY + 15);
+    drawMetaRow("Payment:", order.paymentMethod?.toUpperCase() || "COD", infoTableY + 30);
+    drawMetaRow("Status:", (order.orderStatus || "Pending").toUpperCase(), infoTableY + 45);
 
-    const productsMap = {};
-    products.forEach((p) => (productsMap[p._id] = p));
+    // ================= TABLE SECTION =================
+    let currentY = 220;
 
-    (order.cartItems || []).forEach((item, i) => {
-      const base = item.title || "Product";
-      const variant = item.weight || item.size || "";
-      const title = variant ? `${base} (${variant})` : base;
+    // Header Table
+    doc.rect(leftMargin, currentY, pageWidth, 25).fill(tableHeaderColor);
+    doc.fillColor(secondaryColor).font("Helvetica-Bold").fontSize(10);
+    
+    doc.text("ITEM DESCRIPTION", leftMargin + 10, currentY + 8);
+    doc.text("PRICE", 330, currentY + 8, { width: 60, align: "right" });
+    doc.text("QTY", 400, currentY + 8, { width: 40, align: "center" });
+    doc.text("TOTAL", 465, currentY + 8, { width: 80, align: "right" });
 
+    currentY += 30;
+
+    // Table Rows
+    (order.cartItems || []).forEach((item) => {
+      const title = item.title || "Product";
+      const subTitle = item.weight || item.size || "";
       const price = Number(item.price) || 0;
+      const total = (price * item.quantity).toFixed(2);
 
-      if (i % 2 === 0) {
-        doc.rect(left, y - 2, width, 18).fill(light);
+      // Row Zebra Stripe (Optional)
+      // doc.rect(leftMargin, currentY - 5, pageWidth, 20).fill("#fafafa"); 
+
+      doc.fillColor(secondaryColor).font("Helvetica").fontSize(10);
+      doc.text(title, leftMargin + 10, currentY, { width: 200 });
+      
+      if (subTitle) {
+        doc.fontSize(8).fillColor(mutedColor).text(subTitle, leftMargin + 10, currentY + 12);
       }
 
-      doc.fillColor(dark).font("Helvetica").fontSize(10);
+      doc.fillColor(secondaryColor).fontSize(10);
+      doc.text(`Rs. ${price}`, 330, currentY, { width: 60, align: "right" });
+      doc.text(item.quantity, 400, currentY, { width: 40, align: "center" });
+      doc.text(`Rs. ${total}`, 465, currentY, { width: 80, align: "right" });
 
-      doc.text(title, left + 10, y, { width: 250 });
-      doc.text(`₹${price}`, 320, y, { width: 80, align: "right" });
-      doc.text(item.quantity, 410, y, { width: 40, align: "center" });
-      doc.text(`₹${price * item.quantity}`, 460, y, {
-        width: 80,
-        align: "right",
-      });
+      currentY += subTitle ? 35 : 25;
 
-      y += 20;
+      // Draw thin line between items
+      doc.moveTo(leftMargin, currentY - 5).lineTo(545, currentY - 5).strokeColor(tableHeaderColor).lineWidth(0.5).stroke();
     });
 
-    // ================= SUMMARY =================
-    y += 20;
+    // ================= SUMMARY SECTION =================
+    currentY += 20;
+    const summaryX = 350;
 
-    const drawRow = (label, value, bold = false) => {
-      doc
-        .font(bold ? "Helvetica-Bold" : "Helvetica")
-        .fontSize(bold ? 13 : 10)
-        .fillColor(bold ? primary : dark)
-        .text(label, 350, y)
-        .text(value, 450, y, { width: 95, align: "right" });
+    const drawSummaryRow = (label, value, isTotal = false) => {
+      if (isTotal) {
+        doc.rect(summaryX, currentY - 5, 195, 25).fill(primaryColor);
+        doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(12);
+      } else {
+        doc.fillColor(mutedColor).font("Helvetica").fontSize(10);
+      }
 
-      y += bold ? 20 : 15;
+      doc.text(label, summaryX + 10, currentY);
+      doc.text(value, 465, currentY, { width: 70, align: "right" });
+      currentY += isTotal ? 30 : 20;
     };
 
-    const discount =
-      Number(order.discountAmount || 0) +
-      Number(order.couponDiscount || 0);
+    const discount = Number(order.discountAmount || 0) + Number(order.couponDiscount || 0);
 
-    drawRow("Subtotal:", `₹${order.subTotal || order.totalAmount}`);
-
+    drawSummaryRow("Subtotal", `Rs. ${order.subTotal || order.totalAmount}`);
+    
     if (discount > 0) {
-      drawRow("Discount:", `- ₹${discount}`);
+      drawSummaryRow("Discount", `- Rs. ${discount}`);
     }
 
-    if (order.coupon) {
-      drawRow("Coupon:", order.coupon.code || "Applied");
-    }
-
-    // COD logic
     if (order.paymentMethod === "cod") {
-      drawRow("Paid (Advance):", `₹${order.codAdvanceAmount || 0}`);
-      drawRow("Pay on Delivery:", `₹${order.codRemainingAmount || 0}`);
-    } else {
-      drawRow("Shipping:", "FREE");
+      drawSummaryRow("Advance Paid", `Rs. ${order.codAdvanceAmount || 0}`);
+      drawSummaryRow("Balance Due", `Rs. ${order.codRemainingAmount || 0}`);
     }
 
-    doc.rect(350, y, 195, 30).fill(light);
-
-    drawRow("TOTAL:", `₹${order.totalAmount}`, true);
-
-    // ================= SAVINGS =================
-    if (discount > 0) {
-      doc
-        .fillColor(primary)
-        .fontSize(10)
-        .font("Helvetica-Bold")
-        .text(`🎉 You saved ₹${discount}!`, left, y + 10);
-    }
+    drawSummaryRow("Shipping", "FREE");
+    drawSummaryRow("GRAND TOTAL", `Rs. ${order.totalAmount}`, true);
 
     // ================= FOOTER =================
-    doc
-      .moveTo(left, 750)
-      .lineTo(doc.page.width - 50, 750)
-      .strokeColor(light)
-      .stroke();
+    const footerY = 750;
+    
+    doc.moveTo(leftMargin, footerY).lineTo(545, footerY).strokeColor(borderColor).stroke();
 
     doc
-      .fillColor(gray)
-      .fontSize(8)
+      .fillColor(mutedColor)
+      .fontSize(9)
       .font("Helvetica-Oblique")
-      .text(
-        "Thank you for choosing authentic Himalayan wellness.",
-        left,
-        760,
-        { align: "center", width: width }
-      )
-      .text("This is a computer-generated invoice.", left, 772, {
-        align: "center",
-        width: width,
-      });
+      .text("Thank you for supporting sustainable Himalayan communities.", 0, footerY + 15, { align: "center", width: 595 })
+      .font("Helvetica")
+      .fontSize(7)
+      .fillColor("#ABB2B9")
+      .text("This is a computer-generated document. No signature required.", 0, footerY + 30, { align: "center", width: 595 });
 
     doc.end();
   });
