@@ -9,6 +9,7 @@ import { generateInvoicePDFBuffer } from "../utils/generateInvoicePDF.js";
 import { sendEmail } from "../utils/sendEmail.js";
 import crypto from "crypto";
 import razorpay from "../utils/razorpay.js";
+import { assignCourier, createShipment } from "../utils/shiprocket.js";
 const adjustStock = async (cartItems, type = "deduct") => {
   const factor = type === "deduct" ? -1 : 1;
 
@@ -250,9 +251,7 @@ async function updateCouponUsage(code, userId) {
 }
 
 async function sendOrderEmail(user, order, boxes) {
-  const boxProductIds = boxes.flatMap((b) =>
-    b.items.map((i) => i.productId)
-  );
+  const boxProductIds = boxes.flatMap((b) => b.items.map((i) => i.productId));
 
   const cartProductIds = order.cartItems.map((i) => i.productId);
 
@@ -265,11 +264,7 @@ async function sendOrderEmail(user, order, boxes) {
   const emailMessage = generateOrderEmailTemplate(order, allProducts);
 
   // ✅ PASS USER HERE
-  const pdfBuffer = await generateInvoicePDFBuffer(
-    order,
-    allProducts,
-    user
-  );
+  const pdfBuffer = await generateInvoicePDFBuffer(order, allProducts, user);
 
   await sendEmail({
     email: user.email,
@@ -333,7 +328,6 @@ export const capturePayment = async (req, res) => {
 
     console.log("✅ Signature verified successfully");
 
-
     order.razorpayPaymentId = razorpay_payment_id;
     order.razorpaySignature = razorpay_signature;
 
@@ -363,6 +357,24 @@ export const capturePayment = async (req, res) => {
     );
     await order.save();
     console.log("✅ Database record finalized");
+
+    const user = await User.findById(order.userId);
+
+    // 🔥 Create Shipment
+    const shipment = await createShipment(order, user);
+
+    if (shipment?.shipment_id) {
+      // 🚚 Assign Courier
+      const courier = await assignCourier(shipment.shipment_id);
+
+      order.shipmentId = shipment.shipment_id;
+      order.awb = courier?.response?.data?.awb_code;
+      order.courierName = courier?.response?.data?.courier_name;
+
+      await order.save();
+
+      console.log("🚀 Shipment + AWB Generated");
+    }
 
     const triggerEmail = async () => {
       try {
@@ -470,44 +482,44 @@ export const getAllOrdersOfAllUsers = async (req, res) => {
     const query = {};
 
     // 1. Check if Frontend sent a direct $gte/$lte object
-    if (orderDate && typeof orderDate === 'object') {
+    if (orderDate && typeof orderDate === "object") {
       query.createdAt = {}; // Still use createdAt for backend consistency
       if (orderDate.$gte) query.createdAt.$gte = new Date(orderDate.$gte);
       if (orderDate.$lte) query.createdAt.$lte = new Date(orderDate.$lte);
-    } 
+    }
     // 2. Fallback to the 'filter' string logic (today, week, etc.)
     else if (filter) {
       const now = new Date();
       if (filter === "today") {
-        query.createdAt = { 
-          $gte: new Date(now.setHours(0,0,0,0)), 
-          $lte: new Date(now.setHours(23,59,59,999)) 
+        query.createdAt = {
+          $gte: new Date(now.setHours(0, 0, 0, 0)),
+          $lte: new Date(now.setHours(23, 59, 59, 999)),
         };
       } else if (filter === "yesterday") {
         const yesterday = new Date(now);
         yesterday.setDate(now.getDate() - 1);
-        query.createdAt = { 
-          $gte: new Date(yesterday.setHours(0,0,0,0)), 
-          $lte: new Date(yesterday.setHours(23,59,59,999)) 
+        query.createdAt = {
+          $gte: new Date(yesterday.setHours(0, 0, 0, 0)),
+          $lte: new Date(yesterday.setHours(23, 59, 59, 999)),
         };
       } else if (filter === "week") {
         const weekAgo = new Date(now);
         weekAgo.setDate(now.getDate() - 7);
-        query.createdAt = { $gte: weekAgo.setHours(0,0,0,0) };
+        query.createdAt = { $gte: weekAgo.setHours(0, 0, 0, 0) };
       } else if (filter === "month") {
         const monthAgo = new Date(now);
         monthAgo.setMonth(now.getMonth() - 1);
-        query.createdAt = { $gte: monthAgo.setHours(0,0,0,0) };
+        query.createdAt = { $gte: monthAgo.setHours(0, 0, 0, 0) };
       }
     }
 
     // --- OTHER FILTERS ---
     if (orderId) query._id = orderId.trim();
-    
+
     if (customer) {
       query.$or = [
         { "userInfo.name": { $regex: customer, $options: "i" } },
-        { "userInfo.email": { $regex: customer, $options: "i" } }
+        { "userInfo.email": { $regex: customer, $options: "i" } },
       ];
     }
 
@@ -858,12 +870,16 @@ export const requestReturnItems = async (req, res) => {
 
     const order = await Order.findById(orderId);
     if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
     }
 
     const user = await User.findById(order.userId);
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
     // Logic Gate: Only allow returns for delivered items
@@ -880,7 +896,7 @@ export const requestReturnItems = async (req, res) => {
     const returnItems = items
       .map((item) => {
         const cartItem = order.cartItems.find(
-          (ci) => ci.productId.toString() === item.productId
+          (ci) => ci.productId.toString() === item.productId,
         );
         if (!cartItem) return null;
 
@@ -908,15 +924,21 @@ export const requestReturnItems = async (req, res) => {
     }
 
     // ✅ Full refund logic
-    const totalItemsOrdered = order.cartItems.reduce((sum, i) => sum + i.quantity, 0);
-    const totalItemsReturned = returnItems.reduce((sum, i) => sum + i.quantity, 0);
+    const totalItemsOrdered = order.cartItems.reduce(
+      (sum, i) => sum + i.quantity,
+      0,
+    );
+    const totalItemsReturned = returnItems.reduce(
+      (sum, i) => sum + i.quantity,
+      0,
+    );
 
     if (totalItemsReturned >= totalItemsOrdered) {
       totalReturnAmount = Number(order.totalAmount);
     } else {
       totalReturnAmount = Math.min(
         Number(totalReturnAmount.toFixed(2)),
-        Number(order.totalAmount)
+        Number(order.totalAmount),
       );
     }
 
@@ -980,12 +1002,16 @@ export const requestReturnItems = async (req, res) => {
               </tr>
             </thead>
             <tbody>
-              ${returnItems.map(item => `
+              ${returnItems
+                .map(
+                  (item) => `
                 <tr>
                   <td style="padding:8px; border-bottom:1px solid #f0f0f0;">${item.productName}</td>
                   <td style="padding:8px; border-bottom:1px solid #f0f0f0;">${item.quantity}</td>
                 </tr>
-              `).join("")}
+              `,
+                )
+                .join("")}
             </tbody>
           </table>
           <div style="background-color: #fffaf0; padding: 16px 20px; border-left: 4px solid #f0ad4e; border-radius: 8px; margin: 24px 0;">
@@ -999,7 +1025,10 @@ export const requestReturnItems = async (req, res) => {
       `,
     }).catch((emailError) => {
       // This catch handles the Connection Timeout without breaking the API response
-      console.error("📧 Non-critical Email Error (Timeout):", emailError.message);
+      console.error(
+        "📧 Non-critical Email Error (Timeout):",
+        emailError.message,
+      );
     });
 
     // ✅ SUCCESS RESPONSE
@@ -1009,7 +1038,6 @@ export const requestReturnItems = async (req, res) => {
       returnRequest: newReturnRequest,
       returnStatus: order.returnStatus,
     });
-
   } catch (error) {
     // This catches critical errors (DB failure, file upload failure, etc.)
     console.error("❌ Request return error:", error);
@@ -1027,7 +1055,9 @@ export const approveAdminReturnRequest = async (req, res) => {
 
     const order = await Order.findById(orderId);
     if (!order)
-      return res.status(404).json({ success: false, message: "Order not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
 
     if (!order.returnRequests || order.returnRequests.length === 0)
       return res.status(400).json({
@@ -1037,7 +1067,9 @@ export const approveAdminReturnRequest = async (req, res) => {
 
     const request = order.returnRequests[requestIndex];
     if (!request)
-      return res.status(400).json({ success: false, message: "Invalid return request index" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid return request index" });
 
     const returnItems = request.items || [];
 
@@ -1076,7 +1108,9 @@ export const approveAdminReturnRequest = async (req, res) => {
               Your return request for <b>Order #${order._id}</b> has been 
               <b style="color:${approve ? "#28a745" : "#dc3545"};">${approve ? "approved" : "rejected"}</b>.
             </p>
-            ${approve ? `
+            ${
+              approve
+                ? `
                 <div style="background-color:#f6fff9; padding: 16px 20px; border-left: 4px solid #28a745; border-radius: 8px; margin: 24px 0;">
                   <h3 style="margin: 0 0 8px; color: #28a745; font-size: 16px;">Refund Details</h3>
                   <p style="margin: 0; font-size: 15px; color: #444;">
@@ -1084,19 +1118,23 @@ export const approveAdminReturnRequest = async (req, res) => {
                     Status: <b>Processing</b>
                   </p>
                 </div>
-            ` : `
+            `
+                : `
                 <div style="background-color:#fff6f6; padding: 16px 20px; border-left: 4px solid #dc3545; border-radius: 8px; margin: 24px 0;">
                   <p style="margin: 0; font-size: 15px; color: #444;">
                     Unfortunately, your return request could not be approved. Please contact support for more details.
                   </p>
                 </div>
-            `}
+            `
+            }
             <hr style="border:none; border-top:1px solid #eee; margin: 28px 0;">
             <p style="font-size: 14px; color: #666;">Team <b>Range of Himalayas 🍎</b></p>
           </div>
         </div>
         `,
-      }).catch(err => console.error("📧 Approval Email failed to send:", err.message));
+      }).catch((err) =>
+        console.error("📧 Approval Email failed to send:", err.message),
+      );
     }
 
     return res.status(200).json({
@@ -1117,15 +1155,19 @@ export const approveAdminReturnRequest = async (req, res) => {
 export const approveReturnRequest = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { items } = req.body; 
+    const { items } = req.body;
 
     const order = await Order.findById(orderId);
     if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
     }
 
     if (!items || !items.length) {
-      return res.status(400).json({ success: false, message: "No items provided" });
+      return res
+        .status(400)
+        .json({ success: false, message: "No items provided" });
     }
 
     let refundAmount = 0;
@@ -1134,7 +1176,7 @@ export const approveReturnRequest = async (req, res) => {
     // ✅ Identify items and calculate total refund
     for (const item of items) {
       const cancelledItem = order.cancelledItems.find(
-        (ci) => ci.productId.toString() === item.productId && !ci.refunded
+        (ci) => ci.productId.toString() === item.productId && !ci.refunded,
       );
 
       if (!cancelledItem) continue;
@@ -1165,12 +1207,14 @@ export const approveReturnRequest = async (req, res) => {
       }
 
       // Handle Online Payment Refund
-      const isOnlinePayment = order.paymentMethod === "razorpay" && order.paymentStatus === "paid";
-      const isCODAdvance = order.paymentMethod === "cod" && order.codAdvancePaid;
+      const isOnlinePayment =
+        order.paymentMethod === "razorpay" && order.paymentStatus === "paid";
+      const isCODAdvance =
+        order.paymentMethod === "cod" && order.codAdvancePaid;
 
       if ((isOnlinePayment || isCODAdvance) && order.razorpayPaymentId) {
         let finalRefundValue = refundAmount;
-        
+
         // For COD, limit refund to the advance amount paid
         if (isCODAdvance) {
           finalRefundValue = Math.min(refundAmount, order.codAdvanceAmount);
@@ -1185,7 +1229,7 @@ export const approveReturnRequest = async (req, res) => {
           console.error("Razorpay Refund Error:", error);
           order.refundStatus = "processing"; // Manual intervention needed
         }
-        
+
         order.refundAmount = (order.refundAmount || 0) + finalRefundValue;
       }
     }
@@ -1200,7 +1244,9 @@ export const approveReturnRequest = async (req, res) => {
     });
   } catch (error) {
     console.error("Approve return error:", error);
-    return res.status(500).json({ success: false, message: "Internal server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal server error" });
   }
 };
 export const trackOrder = async (req, res) => {
