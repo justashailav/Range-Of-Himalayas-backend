@@ -356,7 +356,6 @@ export const generateInvoicePDFBuffer = (order, products = []) => {
     // --- DETAILS ---
     const detailsTop = 130;
 
-    // BILL TO
     doc
       .fillColor(textGray)
       .font("Helvetica-Bold")
@@ -365,7 +364,11 @@ export const generateInvoicePDFBuffer = (order, products = []) => {
       .fillColor("#000000")
       .font("Helvetica")
       .fontSize(11)
-      .text(order.userName || "Customer", leftMargin, detailsTop + 15)
+      .text(
+        order.user?.name || order.userName || "Customer",
+        leftMargin,
+        detailsTop + 15
+      )
       .text(order.addressInfo?.phone || "", leftMargin, detailsTop + 30)
       .fontSize(9)
       .fillColor(textGray)
@@ -376,7 +379,6 @@ export const generateInvoicePDFBuffer = (order, products = []) => {
         { width: 220 }
       );
 
-    // ORDER INFO
     const rightColX = 350;
 
     doc
@@ -389,7 +391,7 @@ export const generateInvoicePDFBuffer = (order, products = []) => {
     doc
       .fillColor("#000000")
       .font("Helvetica")
-      .text(`#${orderId.slice(-8).toUpperCase()}`, rightColX + 80, detailsTop)
+      .text(`#${orderId.toUpperCase()}`, rightColX + 80, detailsTop)
       .text(formattedDate, rightColX + 80, detailsTop + 20)
       .text(
         order.paymentMethod?.toUpperCase() || "COD",
@@ -399,7 +401,7 @@ export const generateInvoicePDFBuffer = (order, products = []) => {
 
     doc.moveDown(4);
 
-    // --- TABLE HEADER FUNCTION ---
+    // --- TABLE HEADER ---
     const drawTableHeader = (y, cols) => {
       doc.rect(leftMargin, y, contentWidth, 20).fill(secondaryColor);
 
@@ -442,8 +444,15 @@ export const generateInvoicePDFBuffer = (order, products = []) => {
 
     (order.cartItems || []).forEach((item, i) => {
       const product = productsMap[item.productId?.toString()] || {};
-      const title = item.title || product.title || "Product";
-      const price = item.price || 0;
+
+      const baseTitle = item.title || product.title || "Product";
+      const variantText =
+        item.weight || item.size
+          ? ` (${item.weight || item.size})`
+          : "";
+
+      const title = baseTitle + variantText;
+      const price = Number(item.price) || 0;
 
       if (i % 2 === 0) {
         doc.rect(leftMargin, currentY - 2, contentWidth, 18).fill("#fbfbfb");
@@ -470,7 +479,7 @@ export const generateInvoicePDFBuffer = (order, products = []) => {
       currentY += 20;
     });
 
-    // --- TOTAL ---
+    // --- SUMMARY ---
     const summaryTop = doc.y + 30;
 
     doc
@@ -488,14 +497,37 @@ export const generateInvoicePDFBuffer = (order, products = []) => {
         .text(value, 450, y, { width: 95, align: "right" });
     };
 
-    drawRow("Subtotal:", `₹${order.totalAmount}`, summaryTop + 10);
-    drawRow("Shipping:", "FREE", summaryTop + 25);
+    const discountAmount =
+      Number(order.discountAmount || 0) +
+      Number(order.couponDiscount || 0);
 
-    doc.rect(350, summaryTop + 45, 195, 30).fill(lightGray);
+    drawRow("Subtotal:", `₹${order.subTotal || order.totalAmount}`, summaryTop + 10);
+
+    let yOffset = summaryTop + 25;
+
+    if (discountAmount > 0) {
+      drawRow("Discount:", `- ₹${discountAmount}`, yOffset);
+      yOffset += 15;
+    }
+
+    if (order.coupon) {
+      drawRow(
+        "Coupon:",
+        `${order.coupon.code || "Applied"}`,
+        yOffset
+      );
+      yOffset += 15;
+    }
+
+    drawRow("Shipping:", "FREE", yOffset);
+    yOffset += 20;
+
+    doc.rect(350, yOffset, 195, 30).fill(lightGray);
+
     drawRow(
       "TOTAL:",
       `₹${order.totalAmount}`,
-      summaryTop + 53,
+      yOffset + 8,
       true
     );
 

@@ -22,36 +22,36 @@ const orderSchema = new mongoose.Schema(
           type: String,
           enum: [
             "10g",
-      "20g",
-      "50g",
-      "100g",
-      "120g",
-      "150g",
-      "175g",
-      "200g",
-      "250g",
-      "500g",
-      "750g",
-      "1kg",
-      "2kg",
-      "3kg",
-      "5kg",
-      "10kg",
-      "12kg",
-      "15kg",
-      "100ml",
-      "200ml",
-      "500ml",
-      "1L",
-      "500ml (Honey) 100ml (Apricot Oil)",
-      "500ml (Honey) 200ml (Sea Buckthorn Pulp)",
-      "500ml (Honey) 500ml (Sea Buckthorn Pulp)",
-      "500ml (Honey) 10g (Himalayan Shilajit)",
-      "500ml (Honey) 20g (Himalayan Shilajit)",
-      "10g (Himalayan Shilajit) 500ml (Sea Buckthorn Pulp)",
-      "10g (Himalayan Shilajit) 200ml (Sea Buckthorn Pulp)",
-      "20g (Himalayan Shilajit) 200ml (Sea Buckthorn Pulp)",
-      "20g (Himalayan Shilajit) 500ml (Sea Buckthorn Pulp)"
+            "20g",
+            "50g",
+            "100g",
+            "120g",
+            "150g",
+            "175g",
+            "200g",
+            "250g",
+            "500g",
+            "750g",
+            "1kg",
+            "2kg",
+            "3kg",
+            "5kg",
+            "10kg",
+            "12kg",
+            "15kg",
+            "100ml",
+            "200ml",
+            "500ml",
+            "1L",
+            "500ml (Honey) 100ml (Apricot Oil)",
+            "500ml (Honey) 200ml (Sea Buckthorn Pulp)",
+            "500ml (Honey) 500ml (Sea Buckthorn Pulp)",
+            "500ml (Honey) 10g (Himalayan Shilajit)",
+            "500ml (Honey) 20g (Himalayan Shilajit)",
+            "10g (Himalayan Shilajit) 500ml (Sea Buckthorn Pulp)",
+            "10g (Himalayan Shilajit) 200ml (Sea Buckthorn Pulp)",
+            "20g (Himalayan Shilajit) 200ml (Sea Buckthorn Pulp)",
+            "20g (Himalayan Shilajit) 500ml (Sea Buckthorn Pulp)",
           ],
           required: true,
         },
@@ -102,7 +102,6 @@ const orderSchema = new mongoose.Schema(
       required: true,
     },
 
-
     paymentStatus: {
       type: String,
       enum: ["pending", "partial_paid", "paid", "failed"],
@@ -115,17 +114,17 @@ const orderSchema = new mongoose.Schema(
     },
 
     razorpayOrderId: {
-  type: String,
-  index: true,
-},
+      type: String,
+      index: true,
+    },
 
-razorpayPaymentId: {
-  type: String,
-},
+    razorpayPaymentId: {
+      type: String,
+    },
 
-razorpaySignature: {
-  type: String,
-},
+    razorpaySignature: {
+      type: String,
+    },
 
     /* ✅ COD Fields */
     codAdvanceAmount: {
@@ -201,8 +200,7 @@ razorpaySignature: {
         },
         refundAvailableDate: {
           type: Date,
-          default: () =>
-            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         },
         refunded: {
           type: Boolean,
@@ -248,7 +246,7 @@ razorpaySignature: {
       default: 0,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export const Order = mongoose.model("Order", orderSchema);
