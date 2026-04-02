@@ -294,268 +294,204 @@
 
 import PDFDocument from "pdfkit";
 
-export const generateInvoicePDFBuffer = (order, products = []) => {
+export const generateInvoicePDFBuffer = (
+  order,
+  products = [],
+  user = {}
+) => {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: "A4", margin: 50 });
     const buffers = [];
 
     doc.on("data", buffers.push.bind(buffers));
     doc.on("end", () => resolve(Buffer.concat(buffers)));
-    doc.on("error", (err) => reject(err));
+    doc.on("error", reject);
 
-    // --- CONFIG ---
-    const primaryColor = "#B23A2E";
-    const secondaryColor = "#2d3a2d";
-    const lightGray = "#f9f9f9";
-    const textGray = "#555555";
-    const leftMargin = 50;
-    const rightPadding = 50;
-    const contentWidth = doc.page.width - leftMargin - rightPadding;
+    // --- COLORS ---
+    const primary = "#B23A2E";
+    const dark = "#1a1a1a";
+    const gray = "#777";
+    const light = "#f5f5f5";
 
-    // --- ORDER ID ---
-    const orderId = order?._id ? order._id.toString() : "N/A";
+    const left = 50;
+    const width = doc.page.width - 100;
 
-    // --- DATE ---
-    const dateSource = order.orderDate || order.createdAt;
-    let formattedDate = "N/A";
+    const orderId = order?._id?.toString() || "N/A";
 
-    if (dateSource) {
-      const d = new Date(dateSource);
-      if (!isNaN(d)) {
-        formattedDate = d.toLocaleDateString("en-IN", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        });
-      }
-    }
+    const date = new Date(order.createdAt || order.orderDate);
+    const formattedDate = !isNaN(date)
+      ? date.toLocaleDateString("en-IN")
+      : "N/A";
 
-    // --- HEADER ---
+    // ================= HEADER =================
     doc
-      .fillColor(primaryColor)
+      .fillColor(primary)
+      .fontSize(22)
       .font("Helvetica-Bold")
-      .fontSize(20)
-      .text("RANGE OF HIMALAYAS", leftMargin, 45);
+      .text("RANGE OF HIMALAYAS", left, 40);
 
     doc
-      .fillColor(textGray)
-      .font("Helvetica")
+      .fillColor(gray)
       .fontSize(9)
-      .text("Artisan Harvests & Curated Himalayan Goods", leftMargin, 70)
-      .text("www.rangeofhimalayas.com", leftMargin, 82);
+      .font("Helvetica")
+      .text("Premium Himalayan Wellness Products", left, 65)
+      .text("www.rangeofhimalayas.co.in", left, 78);
 
     doc
-      .fillColor("#000000")
+      .fillColor(dark)
+      .fontSize(26)
       .font("Helvetica-Bold")
-      .fontSize(28)
-      .text("INVOICE", 0, 45, {
-        align: "right",
-        width: doc.page.width - rightPadding,
-      });
+      .text("INVOICE", 0, 40, { align: "right" });
 
-    // --- DETAILS ---
-    const detailsTop = 130;
-
+    // ================= CUSTOMER =================
     doc
-      .fillColor(textGray)
-      .font("Helvetica-Bold")
+      .moveDown(2)
+      .fillColor(gray)
       .fontSize(10)
-      .text("BILL TO:", leftMargin, detailsTop)
-      .fillColor("#000000")
+      .font("Helvetica-Bold")
+      .text("BILL TO");
+
+    doc
+      .fillColor(dark)
       .font("Helvetica")
       .fontSize(11)
-      .text(
-        order.user?.name || order.userName || "Customer",
-        leftMargin,
-        detailsTop + 15
-      )
-      .text(order.addressInfo?.phone || "", leftMargin, detailsTop + 30)
+      .text(user?.name || order.userName || "Customer")
+      .text(order.addressInfo?.phone || "")
       .fontSize(9)
-      .fillColor(textGray)
+      .fillColor(gray)
       .text(
-        `${order.addressInfo?.address || ""}, ${order.addressInfo?.city || ""} - ${order.addressInfo?.pincode || ""}`,
-        leftMargin,
-        detailsTop + 45,
-        { width: 220 }
+        `${order.addressInfo?.address || ""}, ${order.addressInfo?.city || ""} - ${order.addressInfo?.pincode || ""}`
       );
 
-    const rightColX = 350;
-
+    // ================= ORDER DETAILS =================
     doc
-      .fillColor(textGray)
+      .fillColor(gray)
       .font("Helvetica-Bold")
-      .text("ORDER ID:", rightColX, detailsTop)
-      .text("DATE:", rightColX, detailsTop + 20)
-      .text("PAYMENT:", rightColX, detailsTop + 40);
+      .text("ORDER ID:", 350, 120)
+      .text("DATE:", 350, 135)
+      .text("PAYMENT:", 350, 150);
 
     doc
-      .fillColor("#000000")
+      .fillColor(dark)
       .font("Helvetica")
-      .text(`#${orderId.toUpperCase()}`, rightColX + 80, detailsTop)
-      .text(formattedDate, rightColX + 80, detailsTop + 20)
-      .text(
-        order.paymentMethod?.toUpperCase() || "COD",
-        rightColX + 80,
-        detailsTop + 40
-      );
+      .text(orderId, 430, 120)
+      .text(formattedDate, 430, 135)
+      .text(order.paymentMethod?.toUpperCase() || "COD", 430, 150);
 
-    doc.moveDown(4);
+    // ================= TABLE =================
+    let y = 200;
 
-    // --- TABLE HEADER ---
-    const drawTableHeader = (y, cols) => {
-      doc.rect(leftMargin, y, contentWidth, 20).fill(secondaryColor);
+    const drawHeader = () => {
+      doc.rect(left, y, width, 20).fill(dark);
+      doc.fillColor("#fff").fontSize(9).font("Helvetica-Bold");
 
-      doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(9);
+      doc.text("PRODUCT", left + 10, y + 5);
+      doc.text("PRICE", 320, y + 5, { width: 80, align: "right" });
+      doc.text("QTY", 410, y + 5, { width: 40, align: "center" });
+      doc.text("TOTAL", 460, y + 5, { width: 80, align: "right" });
 
-      cols.forEach((c) => {
-        doc.text(c.label, c.x, y + 6, {
-          width: c.w,
-          align: c.align,
-        });
-      });
-
-      return y + 25;
+      y += 25;
     };
 
-    // --- ITEMS ---
-    doc
-      .fillColor(primaryColor)
-      .font("Helvetica-Bold")
-      .fontSize(12)
-      .text("Items", leftMargin);
-
-    doc.moveDown(0.5);
-
-    let currentY = doc.y;
-
-    const cols = [
-      { label: "PRODUCT", x: leftMargin + 10, w: 250, align: "left" },
-      { label: "PRICE", x: 320, w: 80, align: "right" },
-      { label: "QTY", x: 410, w: 40, align: "center" },
-      { label: "TOTAL", x: 460, w: 80, align: "right" },
-    ];
-
-    currentY = drawTableHeader(currentY, cols);
+    drawHeader();
 
     const productsMap = {};
-    products.forEach((p) => {
-      productsMap[p._id.toString()] = p;
-    });
+    products.forEach((p) => (productsMap[p._id] = p));
 
     (order.cartItems || []).forEach((item, i) => {
-      const product = productsMap[item.productId?.toString()] || {};
+      const base = item.title || "Product";
+      const variant = item.weight || item.size || "";
+      const title = variant ? `${base} (${variant})` : base;
 
-      const baseTitle = item.title || product.title || "Product";
-      const variantText =
-        item.weight || item.size
-          ? ` (${item.weight || item.size})`
-          : "";
-
-      const title = baseTitle + variantText;
       const price = Number(item.price) || 0;
 
       if (i % 2 === 0) {
-        doc.rect(leftMargin, currentY - 2, contentWidth, 18).fill("#fbfbfb");
+        doc.rect(left, y - 2, width, 18).fill(light);
       }
 
-      doc
-        .fillColor("#000000")
-        .font("Helvetica")
-        .fontSize(10)
-        .text(title, cols[0].x, currentY, { width: cols[0].w })
-        .text(`₹${price}`, cols[1].x, currentY, {
-          width: cols[1].w,
-          align: "right",
-        })
-        .text(item.quantity.toString(), cols[2].x, currentY, {
-          width: cols[2].w,
-          align: "center",
-        })
-        .text(`₹${price * item.quantity}`, cols[3].x, currentY, {
-          width: cols[3].w,
-          align: "right",
-        });
+      doc.fillColor(dark).font("Helvetica").fontSize(10);
 
-      currentY += 20;
+      doc.text(title, left + 10, y, { width: 250 });
+      doc.text(`₹${price}`, 320, y, { width: 80, align: "right" });
+      doc.text(item.quantity, 410, y, { width: 40, align: "center" });
+      doc.text(`₹${price * item.quantity}`, 460, y, {
+        width: 80,
+        align: "right",
+      });
+
+      y += 20;
     });
 
-    // --- SUMMARY ---
-    const summaryTop = doc.y + 30;
+    // ================= SUMMARY =================
+    y += 20;
 
-    doc
-      .strokeColor(lightGray)
-      .moveTo(350, summaryTop)
-      .lineTo(545, summaryTop)
-      .stroke();
-
-    const drawRow = (label, value, y, isTotal = false) => {
+    const drawRow = (label, value, bold = false) => {
       doc
-        .font(isTotal ? "Helvetica-Bold" : "Helvetica")
-        .fontSize(isTotal ? 14 : 10)
-        .fillColor(isTotal ? primaryColor : "#000000")
+        .font(bold ? "Helvetica-Bold" : "Helvetica")
+        .fontSize(bold ? 13 : 10)
+        .fillColor(bold ? primary : dark)
         .text(label, 350, y)
         .text(value, 450, y, { width: 95, align: "right" });
+
+      y += bold ? 20 : 15;
     };
 
-    const discountAmount =
+    const discount =
       Number(order.discountAmount || 0) +
       Number(order.couponDiscount || 0);
 
-    drawRow("Subtotal:", `₹${order.subTotal || order.totalAmount}`, summaryTop + 10);
+    drawRow("Subtotal:", `₹${order.subTotal || order.totalAmount}`);
 
-    let yOffset = summaryTop + 25;
-
-    if (discountAmount > 0) {
-      drawRow("Discount:", `- ₹${discountAmount}`, yOffset);
-      yOffset += 15;
+    if (discount > 0) {
+      drawRow("Discount:", `- ₹${discount}`);
     }
 
     if (order.coupon) {
-      drawRow(
-        "Coupon:",
-        `${order.coupon.code || "Applied"}`,
-        yOffset
-      );
-      yOffset += 15;
+      drawRow("Coupon:", order.coupon.code || "Applied");
     }
 
-    drawRow("Shipping:", "FREE", yOffset);
-    yOffset += 20;
+    // COD logic
+    if (order.paymentMethod === "cod") {
+      drawRow("Paid (Advance):", `₹${order.codAdvanceAmount || 0}`);
+      drawRow("Pay on Delivery:", `₹${order.codRemainingAmount || 0}`);
+    } else {
+      drawRow("Shipping:", "FREE");
+    }
 
-    doc.rect(350, yOffset, 195, 30).fill(lightGray);
+    doc.rect(350, y, 195, 30).fill(light);
 
-    drawRow(
-      "TOTAL:",
-      `₹${order.totalAmount}`,
-      yOffset + 8,
-      true
-    );
+    drawRow("TOTAL:", `₹${order.totalAmount}`, true);
 
-    // --- FOOTER ---
-    const footerY = 750;
+    // ================= SAVINGS =================
+    if (discount > 0) {
+      doc
+        .fillColor(primary)
+        .fontSize(10)
+        .font("Helvetica-Bold")
+        .text(`🎉 You saved ₹${discount}!`, left, y + 10);
+    }
 
+    // ================= FOOTER =================
     doc
-      .strokeColor(lightGray)
-      .moveTo(leftMargin, footerY)
-      .lineTo(doc.page.width - rightPadding, footerY)
+      .moveTo(left, 750)
+      .lineTo(doc.page.width - 50, 750)
+      .strokeColor(light)
       .stroke();
 
     doc
-      .fillColor(textGray)
-      .font("Helvetica-Oblique")
+      .fillColor(gray)
       .fontSize(8)
+      .font("Helvetica-Oblique")
       .text(
-        "Thank you for supporting authentic Himalayan artisans.",
-        leftMargin,
-        footerY + 15,
-        { align: "center", width: contentWidth }
+        "Thank you for choosing authentic Himalayan wellness.",
+        left,
+        760,
+        { align: "center", width: width }
       )
-      .text(
-        "This is a computer-generated invoice.",
-        leftMargin,
-        footerY + 28,
-        { align: "center", width: contentWidth }
-      );
+      .text("This is a computer-generated invoice.", left, 772, {
+        align: "center",
+        width: width,
+      });
 
     doc.end();
   });

@@ -250,18 +250,37 @@ async function updateCouponUsage(code, userId) {
 }
 
 async function sendOrderEmail(user, order, boxes) {
-  const boxProductIds = boxes.flatMap((b) => b.items.map((i) => i.productId));
-  const boxProducts = await Products.find({
-    _id: { $in: boxProductIds },
+  const boxProductIds = boxes.flatMap((b) =>
+    b.items.map((i) => i.productId)
+  );
+
+  const cartProductIds = order.cartItems.map((i) => i.productId);
+
+  const allProductIds = [...boxProductIds, ...cartProductIds];
+
+  const allProducts = await Products.find({
+    _id: { $in: allProductIds },
   }).lean();
-  const emailMessage = generateOrderEmailTemplate(order, boxProducts);
-  const pdfBuffer = await generateInvoicePDFBuffer(order, boxProducts);
+
+  const emailMessage = generateOrderEmailTemplate(order, allProducts);
+
+  // ✅ PASS USER HERE
+  const pdfBuffer = await generateInvoicePDFBuffer(
+    order,
+    allProducts,
+    user
+  );
 
   await sendEmail({
     email: user.email,
     subject: "Order Confirmation",
     message: emailMessage,
-    attachments: [{ filename: `invoice_${order._id}.pdf`, content: pdfBuffer }],
+    attachments: [
+      {
+        filename: `invoice_${order._id}.pdf`,
+        content: pdfBuffer,
+      },
+    ],
   });
 
   console.log("📧 Confirmation email sent to:", user.email);
@@ -314,9 +333,6 @@ export const capturePayment = async (req, res) => {
 
     console.log("✅ Signature verified successfully");
 
-    // ==========================================
-    // ✅ CRITICAL DATABASE UPDATES (Synchronous)
-    // ==========================================
 
     order.razorpayPaymentId = razorpay_payment_id;
     order.razorpaySignature = razorpay_signature;
@@ -345,15 +361,9 @@ export const capturePayment = async (req, res) => {
       { userId: order.userId },
       { items: [], boxes: [] },
     );
-
-    // Final Save to DB
     await order.save();
     console.log("✅ Database record finalized");
 
-    // ==========================================
-    // 🔥 NON-BLOCKING SIDE EFFECTS (Email)
-    // ==========================================
-    // We do NOT 'await' this in a way that blocks the response
     const triggerEmail = async () => {
       try {
         const user = await User.findById(order.userId);
