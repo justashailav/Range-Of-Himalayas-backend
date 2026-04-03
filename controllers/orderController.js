@@ -9,7 +9,9 @@ import { generateInvoicePDFBuffer } from "../utils/generateInvoicePDF.js";
 import { sendEmail } from "../utils/sendEmail.js";
 import crypto from "crypto";
 import razorpay from "../utils/razorpay.js";
-import { assignCourier, createShipment } from "../utils/shiprocket.js";
+import axios from "axios";
+import { createICCOrder } from "../utils/iccService.js";
+
 const adjustStock = async (cartItems, type = "deduct") => {
   const factor = type === "deduct" ? -1 : 1;
 
@@ -280,7 +282,6 @@ async function sendOrderEmail(user, order, boxes) {
 
   console.log("📧 Confirmation email sent to:", user.email);
 }
-
 export const capturePayment = async (req, res) => {
   try {
     const {
@@ -358,23 +359,40 @@ export const capturePayment = async (req, res) => {
     await order.save();
     console.log("✅ Database record finalized");
 
-    const user = await User.findById(order.userId);
+    // ===============================
+    // 🚀 CREATE COURIER ORDER (ICC)
+    // ===============================
+    const triggerCourier = async () => {
+      try {
+        // 🛑 Avoid duplicate shipment
+        if (order.courierOrderId) {
+          console.log("⚠️ Courier already created");
+          return;
+        }
 
-    // 🔥 Create Shipment
-    const shipment = await createShipment(order, user);
+        console.log("📦 Creating ICC shipment...");
 
-    if (shipment?.shipment_id) {
-      // 🚚 Assign Courier
-      const courier = await assignCourier(shipment.shipment_id);
+        const courierRes = await createICCOrder(order);
 
-      order.shipmentId = shipment.shipment_id;
-      order.awb = courier?.response?.data?.awb_code;
-      order.courierName = courier?.response?.data?.courier_name;
+        await Order.findByIdAndUpdate(order._id, {
+          courier: "ICC",
+          courierOrderId: courierRes?.orderId || null,
+          awb: courierRes?.awb || null,
+          shippingStatus: "shipped",
+        });
 
-      await order.save();
+        console.log("✅ ICC shipment created");
+      } catch (err) {
+        console.error("❌ ICC Error:", err.message);
 
-      console.log("🚀 Shipment + AWB Generated");
-    }
+        await Order.findByIdAndUpdate(order._id, {
+          shippingStatus: "failed",
+        });
+      }
+    };
+
+    // Run in background (non-blocking like email)
+    triggerCourier();
 
     const triggerEmail = async () => {
       try {
