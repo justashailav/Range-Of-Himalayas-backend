@@ -12,7 +12,6 @@ import {
   getRecentOrders,
   getTrackingByOrderId,
   requestReturnItems,
-  trackOrder,
   updateOrderStatus
 } from "../controllers/orderController.js";
 import upload from "../utils/multer.js";
