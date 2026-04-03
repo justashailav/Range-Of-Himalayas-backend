@@ -46,11 +46,11 @@ export const createICCOrder = async (order) => {
       const orderValue = unitPrice * item.quantity;
 
       products.push({
-        productName: item.title || "Product",   // ✅ FIX
+        productName: item.title || "Product",
         quantity: item.quantity,
         sku: item.productId || `SKU_${i}`,
-        orderValue: orderValue,                // ✅ FIX
-        hsn: "0000", // optional (you can improve later)
+        orderValue: orderValue,
+        hsn: "0000",
       });
 
       const itemWeight = parseWeightToKg(item.weight);
@@ -64,18 +64,15 @@ export const createICCOrder = async (order) => {
     totalWeight = Math.max(totalWeight, 0.1);
 
     // ===============================
-    // 📍 ADDRESS FIX (ARRAY FORMAT)
+    // 📍 ADDRESS
     // ===============================
     const addr = order.addressInfo;
 
     let addressLines = [addr.address || ""];
-
-    if (addr.notes) {
-      addressLines.push(addr.notes);
-    }
+    if (addr.notes) addressLines.push(addr.notes);
 
     const deliveryAddress = {
-      lines: addressLines, // ✅ MUST BE ARRAY
+      lines: addressLines,
       city: addr.city,
       state: "Himachal Pradesh",
       pincode: addr.pincode,
@@ -103,7 +100,7 @@ export const createICCOrder = async (order) => {
       order.paymentMethod === "cod" ? "COD" : "Prepaid";
 
     // ===============================
-    // 📄 INVOICE (REQUIRED IN MANY CASES)
+    // 📄 INVOICE
     // ===============================
     const invoice = {
       invoiceDate: new Date().toISOString(),
@@ -118,7 +115,7 @@ export const createICCOrder = async (order) => {
     // 📦 FINAL PAYLOAD
     // ===============================
     const payload = {
-      orderId: order._id.toString(),
+      orderId: order._id.toString(), // ✅ your ID (still fine)
       paymentMode,
 
       deliveryAddress,
@@ -133,15 +130,15 @@ export const createICCOrder = async (order) => {
       },
 
       products,
-
-      invoice, // ✅ IMPORTANT
-      channel: "Custom", // ✅ IMPORTANT
-
-      
+      invoice,
+      channel: "Custom",
     };
 
     console.log("📦 ICC FINAL PAYLOAD:", payload);
 
+    // ===============================
+    // 🚀 API CALL
+    // ===============================
     const res = await axios.post(
       `${BASE_URL}/createOrder`,
       payload,
@@ -156,7 +153,19 @@ export const createICCOrder = async (order) => {
 
     console.log("✅ ICC Response:", res.data);
 
-    return res.data;
+    // ===============================
+    // 🔥 IMPORTANT RETURN FORMAT
+    // ===============================
+    if (!res.data?.data) {
+      throw new Error("Invalid ICC response");
+    }
+
+    return {
+      userOrderId: res.data.data.userOrderId, // 🔥 MAIN ID
+      awbNumber: res.data.data.awbNumber,
+      shipmentId: res.data.data.shipmentId,
+      raw: res.data,
+    };
 
   } catch (error) {
     console.error(
@@ -166,8 +175,6 @@ export const createICCOrder = async (order) => {
     throw error;
   }
 };
-
-
 export const trackICCByOrderId = async (orderId, phone) => {
   try {
     const cleanPhone = (phone || "")

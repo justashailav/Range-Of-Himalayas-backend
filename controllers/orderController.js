@@ -362,34 +362,41 @@ export const capturePayment = async (req, res) => {
     // ===============================
     // 🚀 CREATE COURIER ORDER (ICC)
     // ===============================
-    const triggerCourier = async () => {
-      try {
-        // 🛑 Avoid duplicate shipment
-        if (order.courierOrderId) {
-          console.log("⚠️ Courier already created");
-          return;
-        }
+const triggerCourier = async () => {
+  try {
+    if (order.courierOrderId) {
+      console.log("⚠️ Courier already created");
+      return;
+    }
 
-        console.log("📦 Creating ICC shipment...");
+    console.log("📦 Creating ICC shipment...");
 
-        const courierRes = await createICCOrder(order);
+    const courierRes = await createICCOrder(order);
 
-        await Order.findByIdAndUpdate(order._id, {
-          courier: "ICC",
-          courierOrderId: courierRes?.orderId || null,
-          awb: courierRes?.awb || null,
-          shippingStatus: "shipped",
-        });
+    await Order.findByIdAndUpdate(order._id, {
+      courier: "ICC",
 
-        console.log("✅ ICC shipment created");
-      } catch (err) {
-        console.error("❌ ICC Error:", err.message);
+      courierOrderId: courierRes?.userOrderId || null,
+      awb: courierRes?.awbNumber || null,
+      shipmentId: courierRes?.shipmentId || null,
 
-        await Order.findByIdAndUpdate(order._id, {
-          shippingStatus: "failed",
-        });
-      }
-    };
+      // 🔥 FIX HERE
+      shippingStatus: "confirmed", 
+
+      // optional
+      orderStatus: "confirmed",
+    });
+
+    console.log("✅ ICC shipment created");
+
+  } catch (err) {
+    console.error("❌ ICC Error:", err.message);
+
+    await Order.findByIdAndUpdate(order._id, {
+      shippingStatus: "failed",
+    });
+  }
+};
 
     // Run in background (non-blocking like email)
     triggerCourier();
