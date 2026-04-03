@@ -1,6 +1,7 @@
 import axios from "axios";
-import User from "../models/userModel.js";
+
 import { Products } from "../models/AdminModel/productsModel.js";
+import { User } from "../models/userModel.js";
 
 
 const BASE_URL = "https://api.indiancouriercompany.com/api/custom";
