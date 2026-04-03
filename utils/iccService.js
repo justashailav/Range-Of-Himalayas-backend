@@ -35,7 +35,7 @@ export const createICCOrder = async (order) => {
     let totalWeight = 0;
 
     // ===============================
-    // 🔹 CART ITEMS
+    // 📦 CART ITEMS
     // ===============================
     for (let i = 0; i < order.cartItems.length; i++) {
       const item = order.cartItems[i];
@@ -43,16 +43,14 @@ export const createICCOrder = async (order) => {
       const unitPrice =
         Number(item.price) || Number(item.salesPrice) || 100;
 
+      const orderValue = unitPrice * item.quantity;
+
       products.push({
-        name: item.title || "Product",
+        productName: item.title || "Product",   // ✅ FIX
         quantity: item.quantity,
-
-        // 🔥 FIX: total order value
-        price: unitPrice * item.quantity,
-
-        // 🔥 REQUIRED BY ICC
         sku: item.productId || `SKU_${i}`,
-        description: item.title || "Product",
+        orderValue: orderValue,                // ✅ FIX
+        hsn: "0000", // optional (you can improve later)
       });
 
       const itemWeight = parseWeightToKg(item.weight);
@@ -60,50 +58,24 @@ export const createICCOrder = async (order) => {
     }
 
     // ===============================
-    // 🔹 BOX ITEMS
-    // ===============================
-    for (let i = 0; i < order.boxes.length; i++) {
-      const box = order.boxes[i];
-
-      for (let j = 0; j < box.items.length; j++) {
-        const boxItem = box.items[j];
-
-        // fallback price
-        const unitPrice = 100;
-
-        products.push({
-          name: "Box Product",
-          quantity: boxItem.quantity,
-          price: unitPrice * boxItem.quantity,
-
-          sku: boxItem.productId || `BOX_${j}`,
-          description: "Box Item",
-        });
-
-        totalWeight += 0.5 * boxItem.quantity;
-      }
-    }
-
-    // ===============================
     // ⚖️ WEIGHT FIX
     // ===============================
     if (totalWeight <= 0) totalWeight = 0.5;
-
-    // 🔥 minimum safe weight
     totalWeight = Math.max(totalWeight, 0.1);
 
     // ===============================
-    // 📍 ADDRESS
+    // 📍 ADDRESS FIX (ARRAY FORMAT)
     // ===============================
     const addr = order.addressInfo;
 
-    let fullAddress = addr.address || "";
-    if (addr.notes) fullAddress += `, ${addr.notes}`;
+    let addressLines = [addr.address || ""];
 
-    fullAddress = fullAddress.substring(0, 200);
+    if (addr.notes) {
+      addressLines.push(addr.notes);
+    }
 
     const deliveryAddress = {
-      lines: fullAddress,
+      lines: addressLines, // ✅ MUST BE ARRAY
       city: addr.city,
       state: "Himachal Pradesh",
       pincode: addr.pincode,
@@ -131,6 +103,18 @@ export const createICCOrder = async (order) => {
       order.paymentMethod === "cod" ? "COD" : "Prepaid";
 
     // ===============================
+    // 📄 INVOICE (REQUIRED IN MANY CASES)
+    // ===============================
+    const invoice = {
+      invoiceDate: new Date().toISOString(),
+      invoiceNumber: `INV_${order._id}`,
+      shippingCharge: 0,
+      hasDisconnect: false,
+      hasShippingCharge: false,
+      discount: 0,
+    };
+
+    // ===============================
     // 📦 FINAL PAYLOAD
     // ===============================
     const payload = {
@@ -149,13 +133,15 @@ export const createICCOrder = async (order) => {
       },
 
       products,
+
+      invoice, // ✅ IMPORTANT
+      channel: "Custom", // ✅ IMPORTANT
+
+      
     };
 
-    console.log("📦 ICC Payload:", payload);
+    console.log("📦 ICC FINAL PAYLOAD:", payload);
 
-    // ===============================
-    // 🚀 API CALL
-    // ===============================
     const res = await axios.post(
       `${BASE_URL}/createOrder`,
       payload,
