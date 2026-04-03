@@ -10,6 +10,7 @@ import {
   getOrderDetails,
   getOrderDetailsForAdmin,
   getRecentOrders,
+  getTrackingByOrderId,
   requestReturnItems,
   trackOrder,
   updateOrderStatus
@@ -39,9 +40,7 @@ router.post(
 router.post("/return/approve/:orderId", approveAdminReturnRequest);
 router.post("/return/approve/:orderId", approveReturnRequest);
 
-router.get("/track/:id", trackOrder);
-
-// 🔴 ALWAYS KEEP THIS LAST
+router.get("/:orderId", getTrackingByOrderId);
 router.get("/:id", getOrderDetails);
 
 export default router;

@@ -166,3 +166,34 @@ export const createICCOrder = async (order) => {
     throw error;
   }
 };
+
+
+export const trackICCByOrderId = async (orderId, phone) => {
+  try {
+    const cleanPhone = (phone || "")
+      .replace(/\D/g, "")
+      .slice(-10);
+
+    const url = `${BASE_URL}/tracking?orderId=${orderId}&phone=${cleanPhone}`;
+
+    const res = await axios.post(
+      url,
+      {},
+      {
+        headers: {
+          email: process.env.ICC_EMAIL,
+          password: process.env.ICC_PASSWORD,
+        },
+      }
+    );
+
+    return res.data;
+
+  } catch (error) {
+    console.error(
+      "❌ ICC TRACK ERROR:",
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+};

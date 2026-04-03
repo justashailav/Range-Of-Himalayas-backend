@@ -10,7 +10,7 @@ import { sendEmail } from "../utils/sendEmail.js";
 import crypto from "crypto";
 import razorpay from "../utils/razorpay.js";
 import axios from "axios";
-import { createICCOrder } from "../utils/iccService.js";
+import { createICCOrder, trackICCByOrderId } from "../utils/iccService.js";
 
 const adjustStock = async (cartItems, type = "deduct") => {
   const factor = type === "deduct" ? -1 : 1;
@@ -1267,33 +1267,37 @@ export const approveReturnRequest = async (req, res) => {
       .json({ success: false, message: "Internal server error" });
   }
 };
-export const trackOrder = async (req, res) => {
+export const getTrackingByOrderId = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { orderId } = req.params;
 
-    const order = await Order.findById(id).select(
-      "orderStatus statusHistory orderUpdateDate",
-    );
+    const order = await Order.findById(orderId);
 
     if (!order) {
       return res.status(404).json({
         success: false,
-        message: "Order not found!",
+        message: "Order not found",
       });
     }
-    res.status(200).json({
+
+    // 🔥 IMPORTANT: use courierOrderId if exists
+    const iccOrderId =
+      order.courierOrderId || order._id.toString();
+
+    const trackingData = await trackICCByOrderId(
+      iccOrderId,
+      order.addressInfo.phone
+    );
+
+    return res.json({
       success: true,
-      data: {
-        currentStatus: order.orderStatus,
-        statusHistory: order.statusHistory,
-        lastUpdated: order.orderUpdateDate,
-      },
+      data: trackingData.data,
     });
+
   } catch (error) {
-    console.error("Track order error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: "Internal server error while tracking order",
+      message: "Tracking failed",
     });
   }
 };
