@@ -468,9 +468,18 @@ export const getOrderDetails = async (req, res) => {
 
 export const getAllOrdersOfAllUsers = async (req, res) => {
   try {
+    // 🔐 1. API SECURITY (ICC will send these)
+    const apiKey = req.headers["x-api-key"];
+    const apiSecret = req.headers["x-api-secret"];
+
+    if (apiKey !== "icc_live_123" || apiSecret !== "secret_456") {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    // 🔍 2. QUERY PARAMS (your existing filters)
     const {
       filter,
-      orderDate, // Destructure the date object sent from frontend
+      orderDate,
       status,
       orderId,
       customer,
@@ -481,45 +490,43 @@ export const getAllOrdersOfAllUsers = async (req, res) => {
 
     const query = {};
 
-    // 1. Check if Frontend sent a direct $gte/$lte object
+    // 📅 Date filtering
     if (orderDate && typeof orderDate === "object") {
-      query.createdAt = {}; // Still use createdAt for backend consistency
+      query.createdAt = {};
       if (orderDate.$gte) query.createdAt.$gte = new Date(orderDate.$gte);
       if (orderDate.$lte) query.createdAt.$lte = new Date(orderDate.$lte);
-    }
-    // 2. Fallback to the 'filter' string logic (today, week, etc.)
-    else if (filter) {
+    } else if (filter) {
       const now = new Date();
+
       if (filter === "today") {
         query.createdAt = {
           $gte: new Date(now.setHours(0, 0, 0, 0)),
           $lte: new Date(now.setHours(23, 59, 59, 999)),
         };
       } else if (filter === "yesterday") {
-        const yesterday = new Date(now);
-        yesterday.setDate(now.getDate() - 1);
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
         query.createdAt = {
           $gte: new Date(yesterday.setHours(0, 0, 0, 0)),
           $lte: new Date(yesterday.setHours(23, 59, 59, 999)),
         };
       } else if (filter === "week") {
-        const weekAgo = new Date(now);
-        weekAgo.setDate(now.getDate() - 7);
-        query.createdAt = { $gte: weekAgo.setHours(0, 0, 0, 0) };
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        query.createdAt = { $gte: weekAgo };
       } else if (filter === "month") {
-        const monthAgo = new Date(now);
-        monthAgo.setMonth(now.getMonth() - 1);
-        query.createdAt = { $gte: monthAgo.setHours(0, 0, 0, 0) };
+        const monthAgo = new Date();
+        monthAgo.setMonth(monthAgo.getMonth() - 1);
+        query.createdAt = { $gte: monthAgo };
       }
     }
 
-    // --- OTHER FILTERS ---
+    // 🔎 Other filters
     if (orderId) query._id = orderId.trim();
 
     if (customer) {
       query.$or = [
-        { "userInfo.name": { $regex: customer, $options: "i" } },
-        { "userInfo.email": { $regex: customer, $options: "i" } },
+        { "addressInfo.address": { $regex: customer, $options: "i" } },
       ];
     }
 
@@ -531,14 +538,48 @@ export const getAllOrdersOfAllUsers = async (req, res) => {
       if (maxAmount) query.totalAmount.$lte = Number(maxAmount);
     }
 
+    // 👉 IMPORTANT: Only send pending orders to ICC
+    query.orderStatus = "pending";
+
+    // 📦 3. FETCH ORDERS
     const orders = await Order.find(query).sort({ createdAt: -1 });
 
+    // 🧠 4. EXTRACT USER NAMES (OPTIMIZED)
+    const userIds = [...new Set(orders.map((o) => o.userId))];
+
+    const users = await User.find({ _id: { $in: userIds } });
+
+    const userMap = {};
+    users.forEach((u) => {
+      userMap[u._id] = u.name;
+    });
+
+    // 🔄 5. FORMAT DATA FOR ICC
+    const formattedOrders = orders.map((order) => ({
+      order_id: order._id,
+      customer_name: userMap[order.userId] || "Customer",
+      phone: order.addressInfo?.phone,
+      address: `${order.addressInfo?.address}, ${order.addressInfo?.city}`,
+      city: order.addressInfo?.city,
+      pincode: order.addressInfo?.pincode,
+      payment_method:
+        order.paymentMethod === "COD" ? "COD" : "Prepaid",
+      amount: order.totalAmount,
+      weight: 1, // you can improve later
+    }));
+
+    // ✅ 6. FINAL RESPONSE (ICC WILL READ THIS)
     res.status(200).json({
       success: true,
-      data: orders,
+      orders: formattedOrders,
     });
+
   } catch (e) {
-    res.status(500).json({ success: false, message: "Logistics Sync Error" });
+    console.error(e);
+    res.status(500).json({
+      success: false,
+      message: "Logistics Sync Error",
+    });
   }
 };
 
