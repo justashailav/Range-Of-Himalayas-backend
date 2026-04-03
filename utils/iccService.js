@@ -175,13 +175,24 @@ export const createICCOrder = async (order) => {
     throw error;
   }
 };
-export const trackICCByOrderId = async (orderId, phone) => {
+
+export const trackICCShipment = async (order) => {
   try {
-    const cleanPhone = (phone || "")
+    if (!order?.courierOrderId) {
+      throw new Error("❌ courierOrderId missing in order");
+    }
+
+    const cleanPhone = (order.addressInfo?.phone || "")
       .replace(/\D/g, "")
       .slice(-10);
 
-    const url = `${BASE_URL}/tracking?orderId=${orderId}&phone=${cleanPhone}`;
+    if (!cleanPhone) {
+      throw new Error("❌ Phone number missing for tracking");
+    }
+
+    const url = `${BASE_URL}/tracking?orderId=${order.courierOrderId}&phone=${cleanPhone}`;
+
+    console.log("🔍 Tracking URL:", url);
 
     const res = await axios.post(
       url,
@@ -194,11 +205,65 @@ export const trackICCByOrderId = async (orderId, phone) => {
       }
     );
 
-    return res.data;
+    console.log("📦 ICC TRACK RESPONSE:", res.data);
 
+    if (!res.data?.success) {
+      throw new Error(res.data?.message || "Tracking failed");
+    }
+
+    return res.data;
   } catch (error) {
     console.error(
       "❌ ICC TRACK ERROR:",
+      error.response?.data || error.message
+    );
+    throw error;
+  }
+};
+
+
+export const bookICCShipment = async (userOrderId) => {
+  try {
+    if (!userOrderId) {
+      throw new Error("❌ userOrderId is required for booking shipment");
+    }
+
+    console.log("🚚 Booking shipment for:", userOrderId);
+
+    const url = `${BASE_URL}/bookShipment`;
+
+    const payload = {
+      userOrderId: userOrderId, 
+    };
+
+    const res = await axios.post(url, payload, {
+      headers: {
+        email: process.env.ICC_EMAIL,
+        password: process.env.ICC_PASSWORD,
+        "Content-Type": "application/json",
+      },
+    });
+
+    console.log("📦 ICC BOOK RESPONSE:", res.data);
+
+    // ❌ Handle ICC error
+    if (!res.data || res.data.success === false) {
+      throw new Error(
+        res.data?.message || "Shipment booking failed from ICC"
+      );
+    }
+
+    // ✅ Extract data safely
+    const data = res.data?.data || {};
+
+    return {
+      awbNumber: data.awbNumber || null,
+      shipmentId: data.shipmentId || null,
+      raw: res.data,
+    };
+  } catch (error) {
+    console.error(
+      "❌ BOOK ICC SHIPMENT ERROR:",
       error.response?.data || error.message
     );
     throw error;

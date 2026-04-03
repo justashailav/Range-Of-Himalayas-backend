@@ -163,7 +163,23 @@ const orderSchema = new mongoose.Schema(
       ],
       default: "pending",
     },
+    courierOrderId: {
+      type: String,
+    },
 
+    awb: {
+      type: String,
+    },
+
+    shipmentId: {
+      type: String,
+    },
+
+    shippingStatus: {
+      type: String,
+      enum: ["pending", "created", "shipped", "failed"],
+      default: "pending",
+    },
     statusHistory: [
       {
         status: {
