@@ -103,7 +103,7 @@ export const createICCOrder = async (order) => {
     const deliveryPhones = [
       {
         phoneNumber: phone,
-        phoneType: "mobile",
+        phoneType: "Primary",
       },
     ];
     const paymentMode = order.paymentMethod === "cod" ? "COD" : "Prepaid";
