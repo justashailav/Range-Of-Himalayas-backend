@@ -29,76 +29,93 @@ const parseWeightToKg = (weightStr) => {
 
 export const createICCOrder = async (order) => {
   try {
-    // ===============================
-    // 👤 GET USER NAME
-    // ===============================
     const user = await User.findById(order.userId).lean();
 
-    // ===============================
-    // 📦 PRODUCTS ARRAY + WEIGHT
-    // ===============================
     let products = [];
     let totalWeight = 0;
 
+    // ===============================
     // 🔹 CART ITEMS
+    // ===============================
     for (let i = 0; i < order.cartItems.length; i++) {
       const item = order.cartItems[i];
+
+      const unitPrice =
+        Number(item.price) || Number(item.salesPrice) || 100;
 
       products.push({
         name: item.title || "Product",
         quantity: item.quantity,
-        price: Number(item.price),
+
+        // 🔥 FIX: total order value
+        price: unitPrice * item.quantity,
+
+        // 🔥 REQUIRED BY ICC
+        sku: item.productId || `SKU_${i}`,
+        description: item.title || "Product",
       });
 
       const itemWeight = parseWeightToKg(item.weight);
       totalWeight += itemWeight * item.quantity;
     }
 
+    // ===============================
     // 🔹 BOX ITEMS
+    // ===============================
     for (let i = 0; i < order.boxes.length; i++) {
       const box = order.boxes[i];
 
       for (let j = 0; j < box.items.length; j++) {
         const boxItem = box.items[j];
 
-        const product = await Products.findById(boxItem.productId).lean();
+        // fallback price
+        const unitPrice = 100;
 
         products.push({
-          name: product?.title || "Box Product",
+          name: "Box Product",
           quantity: boxItem.quantity,
-          price: 0, // optional (you can improve later)
+          price: unitPrice * boxItem.quantity,
+
+          sku: boxItem.productId || `BOX_${j}`,
+          description: "Box Item",
         });
 
-        // assume 500g per box item (adjust if needed)
         totalWeight += 0.5 * boxItem.quantity;
       }
     }
 
-    // fallback weight
+    // ===============================
+    // ⚖️ WEIGHT FIX
+    // ===============================
     if (totalWeight <= 0) totalWeight = 0.5;
 
+    // 🔥 minimum safe weight
+    totalWeight = Math.max(totalWeight, 0.1);
+
+    // ===============================
+    // 📍 ADDRESS
+    // ===============================
     const addr = order.addressInfo;
 
-    // combine address + notes (important)
     let fullAddress = addr.address || "";
+    if (addr.notes) fullAddress += `, ${addr.notes}`;
 
-    if (addr.notes) {
-      fullAddress += `, ${addr.notes}`;
-    }
-
-    // ICC expects clean string (max ~200 chars usually)
     fullAddress = fullAddress.substring(0, 200);
 
     const deliveryAddress = {
       lines: fullAddress,
       city: addr.city,
-      state: "Himachal Pradesh", // static or dynamic later
+      state: "Himachal Pradesh",
       pincode: addr.pincode,
       customerName: user?.name || "Customer",
     };
+
+    // ===============================
+    // 📞 PHONE
+    // ===============================
     const phone = (addr.phone || "")
-  .replace(/\D/g, "")   // remove +91, spaces
-  .slice(-10);   
+      .replace(/\D/g, "")
+      .slice(-10);
 
     const deliveryPhones = [
       {
@@ -106,7 +123,16 @@ export const createICCOrder = async (order) => {
         phoneType: "Primary",
       },
     ];
-    const paymentMode = order.paymentMethod === "cod" ? "COD" : "Prepaid";
+
+    // ===============================
+    // 💳 PAYMENT MODE
+    // ===============================
+    const paymentMode =
+      order.paymentMethod === "cod" ? "COD" : "Prepaid";
+
+    // ===============================
+    // 📦 FINAL PAYLOAD
+    // ===============================
     const payload = {
       orderId: order._id.toString(),
       paymentMode,
@@ -130,19 +156,27 @@ export const createICCOrder = async (order) => {
     // ===============================
     // 🚀 API CALL
     // ===============================
-    const res = await axios.post(`${BASE_URL}/createOrder`, payload, {
-      headers: {
-        email: process.env.ICC_EMAIL,
-        password: process.env.ICC_PASSWORD,
-        "Content-Type": "application/json",
-      },
-    });
+    const res = await axios.post(
+      `${BASE_URL}/createOrder`,
+      payload,
+      {
+        headers: {
+          email: process.env.ICC_EMAIL,
+          password: process.env.ICC_PASSWORD,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
     console.log("✅ ICC Response:", res.data);
 
     return res.data;
+
   } catch (error) {
-    console.error("❌ ICC ERROR:", error.response?.data || error.message);
+    console.error(
+      "❌ ICC ERROR:",
+      error.response?.data || error.message
+    );
     throw error;
   }
 };
