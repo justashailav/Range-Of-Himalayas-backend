@@ -646,46 +646,42 @@ export const updateOrderStatus = async (req, res) => {
     await order.save({ validateBeforeSave: false });
 
     if (orderStatus === "shipped") {
-      try {
-        console.log("🚚 Triggering ICC shipment...");
+  try {
+    console.log("🚚 Triggering ICC shipment...");
 
-        if (!order.courierOrderId) {
-          const courierRes = await createICCOrder(order);
+    if (!order.courierOrderId) {
+      const courierRes = await createICCOrder(order);
 
-          console.log("📦 ICC RESPONSE:", courierRes);
+      console.log("📦 ICC RESPONSE:", courierRes);
 
-          const iccOrderId = courierRes?.raw?.data?.order?.orderId;
+      const iccOrderId = courierRes?.userOrderId;
 
-          if (!iccOrderId) {
-            throw new Error("❌ ICC orderId missing");
-          }
-
-          console.log("🧾 ICC Order ID:", iccOrderId);
-
-          // 🔥 BOOK SHIPMENT
-          const shipmentRes = await bookICCShipment(iccOrderId);
-          console.log("🚀 Shipment Response:", shipmentRes);
-
-          // ✅ SAVE EVERYTHING
-          order.courier = "ICC";
-          order.courierOrderId = iccOrderId;
-          order.awb = shipmentRes?.awbNumber || courierRes?.awbNumber || null;
-          order.shipmentId =
-            shipmentRes?.shipmentId || courierRes?.shipmentId || null;
-
-          order.shippingStatus = "shipped";
-
-          await order.save({ validateBeforeSave: false });
-
-          console.log("✅ Shipment created from status update");
-        }
-      } catch (err) {
-        console.error("❌ Shipment error FULL:", err);
-
-        order.shippingStatus = "failed";
-        await order.save({ validateBeforeSave: false });
+      if (!iccOrderId) {
+        throw new Error("❌ ICC orderId missing");
       }
+
+      console.log("🧾 ICC Order ID:", iccOrderId);
+
+      // ✅ SAVE (NO BOOKING)
+      order.courier = "ICC";
+      order.courierOrderId = iccOrderId;
+
+      order.awb = null; // will come later from tracking
+      order.shipmentId = null;
+
+      order.shippingStatus = "created"; // 🔥 important
+
+      await order.save({ validateBeforeSave: false });
+
+      console.log("✅ ICC order created successfully");
     }
+  } catch (err) {
+    console.error("❌ Shipment error FULL:", err);
+
+    order.shippingStatus = "failed";
+    await order.save({ validateBeforeSave: false });
+  }
+}
 
     // 4️⃣ Emit real-time update via socket.io
     const io = req.app.get("io");
