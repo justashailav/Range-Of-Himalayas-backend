@@ -7,6 +7,7 @@ import {
   createOrder,
   getAllOrdersByUserId,
   getAllOrdersOfAllUsers,
+  getOrderById,
   getOrderDetails,
   getOrderDetailsForAdmin,
   getRecentOrders,
@@ -22,6 +23,7 @@ router.get("/recent", getRecentOrders);
 router.post("/create", isAuthenticated, createOrder);
 router.post("/capture-payment", capturePayment);
 router.get("/getallorders", getAllOrdersOfAllUsers);
+router.get("/:id", getOrderById);
 router.get("/get/:userId", getAllOrdersByUserId);
 router.get("/details/:id", getOrderDetailsForAdmin);
 router.put("/update/:id", updateOrderStatus);

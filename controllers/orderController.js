@@ -453,14 +453,48 @@ export const capturePayment = async (req, res) => {
     });
   }
 };
+export const getOrderById = async (req, res) => {
+  try {
+    const { id } = req.params;
 
+    let order = await Order.findById(id).lean();
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
+      });
+    }
+
+    // 🔥 ALWAYS USE LATEST STATUS
+    if (order.statusHistory && order.statusHistory.length > 0) {
+      const latest =
+        order.statusHistory[order.statusHistory.length - 1];
+
+      if (latest?.status) {
+        order.orderStatus = latest.status;
+      }
+    }
+
+    console.log("✅ ORDER FETCHED:", order.orderStatus);
+
+    return res.status(200).json({
+      success: true,
+      data: order,
+    });
+  } catch (error) {
+    console.error("❌ Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
 export const getAllOrdersByUserId = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    let orders = await Order.find({ userId })
-      .sort({ createdAt: -1 })
-      .lean(); // 🔥 important
+    const orders = await Order.find({ userId }).sort({ createdAt: -1 });
 
     if (!orders || orders.length === 0) {
       return res.status(404).json({
@@ -468,25 +502,6 @@ export const getAllOrdersByUserId = async (req, res) => {
         message: "No orders found for this user.",
       });
     }
-
-    // 🔥 FIX: ALWAYS USE LATEST STATUS FROM HISTORY
-    orders = orders.map((order) => {
-      if (order.statusHistory && order.statusHistory.length > 0) {
-        const latest =
-          order.statusHistory[order.statusHistory.length - 1];
-
-        if (latest?.status) {
-          order.orderStatus = latest.status;
-        }
-      }
-
-      return order;
-    });
-
-    console.log(
-      "✅ Orders sent:",
-      orders.map((o) => o.orderStatus),
-    );
 
     res.status(200).json({
       success: true,
