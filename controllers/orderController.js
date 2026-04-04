@@ -366,64 +366,58 @@ export const capturePayment = async (req, res) => {
     // 🚀 CREATE COURIER ORDER (ICC)
     // ===============================
     const triggerCourier = async (orderId) => {
-      try {
-        console.log("🚀 TriggerCourier START");
+  try {
+    console.log("🚀 TriggerCourier START");
 
-        // 🔄 Fetch fresh order
-        const order = await Order.findById(orderId);
+    const order = await Order.findById(orderId);
 
-        if (!order) {
-          console.log("❌ Order not found");
-          return;
-        }
+    if (!order) {
+      console.log("❌ Order not found");
+      return;
+    }
 
-        // 🛑 Already created
-        if (order.courierOrderId) {
-          console.log("⚠️ Courier already created");
-          return;
-        }
+    if (order.courierOrderId) {
+      console.log("⚠️ Courier already created");
+      return;
+    }
 
-        // 🛑 Only allow when status is shipped
-        if (order.orderStatus !== "shipped") {
-          console.log("⏸ Not shipped yet, skipping ICC");
-          return;
-        }
+    if (order.orderStatus !== "shipped") {
+      console.log("⏸ Not shipped yet, skipping ICC");
+      return;
+    }
 
-        console.log("📦 Creating ICC order...");
+    console.log("📦 Creating ICC order...");
 
-        // 1️⃣ Create ICC Order
-        const courierRes = await createICCOrder(order);
+    const courierRes = await createICCOrder(order);
 
-        console.log("📦 ICC CREATE RESPONSE:", courierRes);
+    console.log("📦 ICC CREATE RESPONSE:", courierRes);
 
-        const iccOrderId = courierRes?.userOrderId;
+    const iccOrderId = courierRes?.userOrderId;
 
-        if (!iccOrderId) {
-          throw new Error("❌ ICC orderId missing");
-        }
+    if (!iccOrderId) {
+      throw new Error("❌ ICC orderId missing");
+    }
 
-        console.log("🧾 ICC Order ID:", iccOrderId);
+    console.log("🧾 ICC Order ID:", iccOrderId);
 
-        // ❌ DO NOT CALL bookShipment (not supported in your ICC)
+    await Order.findByIdAndUpdate(order._id, {
+      courier: "ICC",
+      courierOrderId: iccOrderId,
+      shippingStatus: "created",
+    });
 
-        // 2️⃣ Save in DB
-        await Order.findByIdAndUpdate(order._id, {
-          courier: "ICC",
-          courierOrderId: iccOrderId,
-          shippingStatus: "created", // 🔥 important
-        });
+    console.log("✅ ICC order created successfully");
+  } catch (err) {
+    console.error("❌ TriggerCourier ERROR:", err);
 
-        console.log("✅ ICC order created successfully");
-      } catch (err) {
-        console.error("❌ TriggerCourier ERROR:", err);
+    await Order.findByIdAndUpdate(orderId, {
+      shippingStatus: "failed",
+    });
+  }
+};
 
-        await Order.findByIdAndUpdate(orderId, {
-          shippingStatus: "failed",
-        });
-      }
-    };
-    // Run in background (non-blocking like email)
-    triggerCourier();
+// ✅ correct call
+triggerCourier(order._id);
 
     const triggerEmail = async () => {
       try {
