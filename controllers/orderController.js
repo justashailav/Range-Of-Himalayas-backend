@@ -10,10 +10,7 @@ import { sendEmail } from "../utils/sendEmail.js";
 import crypto from "crypto";
 import razorpay from "../utils/razorpay.js";
 
-import {
-  createICCOrder,
-  trackICCShipment,
-} from "../utils/iccService.js";
+import { createICCOrder, trackICCShipment } from "../utils/iccService.js";
 
 const adjustStock = async (cartItems, type = "deduct") => {
   const factor = type === "deduct" ? -1 : 1;
@@ -366,58 +363,58 @@ export const capturePayment = async (req, res) => {
     // 🚀 CREATE COURIER ORDER (ICC)
     // ===============================
     const triggerCourier = async (orderId) => {
-  try {
-    console.log("🚀 TriggerCourier START");
+      try {
+        console.log("🚀 TriggerCourier START");
 
-    const order = await Order.findById(orderId);
+        const order = await Order.findById(orderId);
 
-    if (!order) {
-      console.log("❌ Order not found");
-      return;
-    }
+        if (!order) {
+          console.log("❌ Order not found");
+          return;
+        }
 
-    if (order.courierOrderId) {
-      console.log("⚠️ Courier already created");
-      return;
-    }
+        if (order.courierOrderId) {
+          console.log("⚠️ Courier already created");
+          return;
+        }
 
-    if (order.orderStatus !== "shipped") {
-      console.log("⏸ Not shipped yet, skipping ICC");
-      return;
-    }
+        if (order.orderStatus !== "shipped") {
+          console.log("⏸ Not shipped yet, skipping ICC");
+          return;
+        }
 
-    console.log("📦 Creating ICC order...");
+        console.log("📦 Creating ICC order...");
 
-    const courierRes = await createICCOrder(order);
+        const courierRes = await createICCOrder(order);
 
-    console.log("📦 ICC CREATE RESPONSE:", courierRes);
+        console.log("📦 ICC CREATE RESPONSE:", courierRes);
 
-    const iccOrderId = courierRes?.userOrderId;
+        const iccOrderId = courierRes?.userOrderId;
 
-    if (!iccOrderId) {
-      throw new Error("❌ ICC orderId missing");
-    }
+        if (!iccOrderId) {
+          throw new Error("❌ ICC orderId missing");
+        }
 
-    console.log("🧾 ICC Order ID:", iccOrderId);
+        console.log("🧾 ICC Order ID:", iccOrderId);
 
-    await Order.findByIdAndUpdate(order._id, {
-      courier: "ICC",
-      courierOrderId: iccOrderId,
-      shippingStatus: "created",
-    });
+        await Order.findByIdAndUpdate(order._id, {
+          courier: "ICC",
+          courierOrderId: iccOrderId,
+          shippingStatus: "created",
+        });
 
-    console.log("✅ ICC order created successfully");
-  } catch (err) {
-    console.error("❌ TriggerCourier ERROR:", err);
+        console.log("✅ ICC order created successfully");
+      } catch (err) {
+        console.error("❌ TriggerCourier ERROR:", err);
 
-    await Order.findByIdAndUpdate(orderId, {
-      shippingStatus: "failed",
-    });
-  }
-};
+        await Order.findByIdAndUpdate(orderId, {
+          shippingStatus: "failed",
+        });
+      }
+    };
 
-// ✅ correct call
-triggerCourier(order._id);
+    // ✅ correct call
+    triggerCourier(order._id);
 
     const triggerEmail = async () => {
       try {
@@ -613,8 +610,8 @@ export const getOrderDetailsForAdmin = async (req, res) => {
 
 export const updateOrderStatus = async (req, res) => {
   try {
-    const { id } = req.params; // orderId
-    const { orderStatus } = req.body; // new status
+    const { id } = req.params;
+    const { orderStatus } = req.body;
 
     console.log("🔄 Updating order status:", id, "→", orderStatus);
 
@@ -634,129 +631,157 @@ export const updateOrderStatus = async (req, res) => {
         .json({ success: false, message: "User not found" });
     }
 
-    // 3️⃣ Update order details
-    order.orderStatus = orderStatus;
+    // ====================================================
+    // 🔥 3️⃣ PREVENT STATUS DOWNGRADE (VERY IMPORTANT)
+    // ====================================================
+    const validFlow = [
+      "confirmed",
+      "packed",
+      "shipped",
+      "out_for_delivery",
+      "delivered",
+    ];
+
+    const currentIndex = validFlow.indexOf(
+      (order.orderStatus || "").toLowerCase(),
+    );
+
+    const newIndex = validFlow.indexOf(
+      (orderStatus || "").toLowerCase(),
+    );
+
+    if (newIndex < currentIndex) {
+      console.log("⚠️ Ignoring backward status update");
+    } else {
+      order.orderStatus = orderStatus;
+    }
+
+    // ====================================================
+    // 🔥 ALWAYS PUSH HISTORY
+    // ====================================================
     order.statusHistory = order.statusHistory || [];
     order.statusHistory.push({
       status: orderStatus,
       updatedAt: new Date(),
     });
+
     order.orderUpdateDate = new Date();
 
     await order.save({ validateBeforeSave: false });
 
-    if (orderStatus === "shipped") {
-  try {
-    console.log("🚚 Triggering ICC shipment...");
+    console.log("✅ Saved Order Status:", order.orderStatus);
 
-    if (!order.courierOrderId) {
-      const courierRes = await createICCOrder(order);
+    // ====================================================
+    // 🚚 4️⃣ ICC ONLY WHEN SHIPPED
+    // ====================================================
+    if (
+      order.orderStatus.toLowerCase() === "shipped" &&
+      !order.courierOrderId
+    ) {
+      try {
+        console.log("🚚 Triggering ICC shipment...");
 
-      console.log("📦 ICC RESPONSE:", courierRes);
+        const courierRes = await createICCOrder(order);
 
-      const iccOrderId = courierRes?.userOrderId;
+        console.log("📦 ICC RESPONSE:", courierRes);
 
-      if (!iccOrderId) {
-        throw new Error("❌ ICC orderId missing");
+        const iccOrderId = courierRes?.userOrderId;
+
+        if (!iccOrderId) {
+          throw new Error("❌ ICC orderId missing");
+        }
+
+        console.log("🧾 ICC Order ID:", iccOrderId);
+
+        // ✅ SAVE ICC DATA
+        order.courier = "ICC";
+        order.courierOrderId = iccOrderId;
+        order.awb = null;
+        order.shipmentId = null;
+
+        // 🔥 VERY IMPORTANT
+        order.shippingStatus = "created";
+
+        await order.save({ validateBeforeSave: false });
+
+        console.log("✅ ICC order created successfully");
+      } catch (err) {
+        console.error("❌ Shipment error FULL:", err);
+
+        order.shippingStatus = "failed";
+        await order.save({ validateBeforeSave: false });
       }
-
-      console.log("🧾 ICC Order ID:", iccOrderId);
-
-      // ✅ SAVE (NO BOOKING)
-      order.courier = "ICC";
-      order.courierOrderId = iccOrderId;
-
-      order.awb = null; // will come later from tracking
-      order.shipmentId = null;
-
-      order.shippingStatus = "created"; // 🔥 important
-
-      await order.save({ validateBeforeSave: false });
-
-      console.log("✅ ICC order created successfully");
     }
-  } catch (err) {
-    console.error("❌ Shipment error FULL:", err);
 
-    order.shippingStatus = "failed";
-    await order.save({ validateBeforeSave: false });
-  }
-}
-
-    // 4️⃣ Emit real-time update via socket.io
+    // ====================================================
+    // 📡 5️⃣ SOCKET EMIT
+    // ====================================================
     const io = req.app.get("io");
     if (io) {
       io.to(id).emit("orderStatusUpdated", {
         orderId: id,
-        status: orderStatus,
+        status: order.orderStatus, // 🔥 ALWAYS SEND FINAL STATUS
         updatedAt: order.orderUpdateDate,
       });
-      console.log("📡 orderStatusUpdated event emitted via socket.io");
+
+      console.log("📡 orderStatusUpdated emitted");
     }
 
-    // 5️⃣ Send Email Notification
+    // ====================================================
+    // 📧 6️⃣ EMAIL
+    // ====================================================
     if (user.email) {
-      console.log("📧 Preparing to send email to:", user.email);
+      console.log("📧 Sending email to:", user.email);
 
       let statusColor = "#333";
       let subjectLine = "";
       let messageBody = "";
 
-      switch (orderStatus.toLowerCase()) {
+      switch (order.orderStatus.toLowerCase()) {
         case "packed":
           statusColor = "#f0ad4e";
           subjectLine = `Your Order Has Been Packed 🎁`;
-          messageBody = `Your order has been carefully packed with care and freshness. It’s almost ready to ship!`;
+          messageBody = `Your order has been carefully packed. Ready to ship!`;
           break;
 
         case "shipped":
           statusColor = "#0275d8";
-          subjectLine = `Your Order  is On Its Way 🚚`;
-          messageBody = `Good news! Your package has been shipped and is making its way to you. You’ll taste the Himalayas soon!`;
+          subjectLine = `Your Order is On Its Way 🚚`;
+          messageBody = `Your order has been shipped successfully.`;
           break;
 
         case "out_for_delivery":
           statusColor = "#00bcd4";
-          subjectLine = `Your Order is Out for Delivery 🚀`;
-          messageBody = `Get ready! Your order is out for delivery and will reach you shortly. Please keep your phone handy.`;
+          subjectLine = `Out for Delivery 🚀`;
+          messageBody = `Your order will reach you shortly.`;
           break;
 
         case "delivered":
           statusColor = "#5cb85c";
-          subjectLine = `Your Order Has Been Delivered 🏡`;
-          messageBody = `We’re delighted to inform you that your order has been successfully delivered. Enjoy your fresh fruits straight from the Himalayas! 🍎`;
+          subjectLine = `Delivered 🏡`;
+          messageBody = `Your order has been delivered successfully.`;
           break;
 
         case "cancelled":
           statusColor = "#d9534f";
-          subjectLine = `Your Order Has Been Cancelled ❌`;
-          messageBody = `Your order has been cancelled as per your request or due to an issue with delivery. Any applicable refunds will be processed shortly.`;
-          break;
-
-        case "rejected":
-          statusColor = "#e53935";
-          subjectLine = `Your Order Has Been Rejected 🚫`;
-          messageBody = `We’re sorry to inform you that your order has been rejected due to unforeseen issues. If you’ve made any payment, it will be refunded soon.`;
+          subjectLine = `Order Cancelled ❌`;
+          messageBody = `Your order has been cancelled.`;
           break;
 
         default:
-          subjectLine = `Update on Your Order `;
-          messageBody = `Your order status has been updated to <b>${orderStatus}</b>.`;
+          subjectLine = `Order Update`;
+          messageBody = `Status updated to ${order.orderStatus}`;
       }
 
       const message = `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #fffaf8; padding: 20px; border-radius: 10px;">
+        <div style="font-family: Arial; padding:20px;">
           <h2 style="color:${statusColor};">${subjectLine}</h2>
           <p>Hi ${user.name || "there"},</p>
           <p>${messageBody}</p>
           <p><b>Order ID:</b> #${order._id}</p>
-          <p><b>Updated On:</b> ${new Date(
+          <p><b>Updated:</b> ${new Date(
             order.orderUpdateDate,
           ).toLocaleString()}</p>
-          <hr style="border:none; border-top:1px solid #eee; margin: 20px 0;">
-          <p>Thank you for choosing <b>Range of Himalayas</b> 🌄🍏<br/>
-          Fresh from the mountains, delivered with care.</p>
-          <p style="font-size:12px; color:#999;">This is an automated message — please do not reply.</p>
         </div>
       `;
 
@@ -766,25 +791,26 @@ export const updateOrderStatus = async (req, res) => {
           subject: subjectLine,
           message,
         });
-        console.log("✅ Email sent successfully to:", user.email);
+        console.log("✅ Email sent");
       } catch (err) {
-        console.error("🚨 Error sending email:", err.message);
+        console.error("🚨 Email error:", err.message);
       }
-    } else {
-      console.warn("⚠️ User email not found, skipping email notification");
     }
 
-    // 6️⃣ Final Response
+    // ====================================================
+    // ✅ FINAL RESPONSE
+    // ====================================================
     return res.status(200).json({
       success: true,
-      message: "Order status updated successfully and email sent!",
+      message: "Order updated successfully",
       data: order,
     });
   } catch (error) {
-    console.error("❌ Error updating order status:", error);
+    console.error("❌ Error updating order:", error);
+
     return res.status(500).json({
       success: false,
-      message: "Internal server error while updating order status",
+      message: "Internal server error",
       error: error.message,
     });
   }
@@ -1379,7 +1405,6 @@ export const getTrackingByOrderId = async (req, res) => {
       type: "icc", // 🔥 important
       data: trackingData.formatted,
     });
-
   } catch (error) {
     console.error("❌ Tracking API Error:", error);
 
