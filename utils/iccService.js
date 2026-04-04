@@ -115,20 +115,16 @@ export const createICCOrder = async (order) => {
     // 📦 FINAL PAYLOAD
     // ===============================
     const payload = {
-      orderId: order._id.toString(), // ✅ your ID (still fine)
+      orderId: order._id.toString(), // your internal ID
       paymentMode,
-
       deliveryAddress,
       deliveryPhones,
-
       physicalWeight: Number(totalWeight.toFixed(2)),
-
       dimensions: {
         length: 10,
         breadth: 10,
         height: 10,
       },
-
       products,
       invoice,
       channel: "Custom",
@@ -154,19 +150,27 @@ export const createICCOrder = async (order) => {
     console.log("✅ ICC Response:", res.data);
 
     // ===============================
-    // 🔥 IMPORTANT RETURN FORMAT
+    // 🔥 VALIDATION
     // ===============================
-    if (!res.data?.data) {
-      throw new Error("Invalid ICC response");
+    const iccOrder = res.data?.data?.order;
+
+    if (!iccOrder?.orderId) {
+      throw new Error("❌ ICC orderId missing in response");
     }
 
+    const iccOrderId = iccOrder.orderId;
+
+    console.log("🔥 FINAL ICC ORDER ID:", iccOrderId);
+
+    // ===============================
+    // ✅ RETURN CORRECT STRUCTURE
+    // ===============================
     return {
-      userOrderId: res.data.data.userOrderId, // 🔥 MAIN ID
-      awbNumber: res.data.data.awbNumber,
-      shipmentId: res.data.data.shipmentId,
+      userOrderId: iccOrderId, // ✅ FIXED
+      awbNumber: null, // will come after booking
+      shipmentId: null,
       raw: res.data,
     };
-
   } catch (error) {
     console.error(
       "❌ ICC ERROR:",
@@ -225,41 +229,57 @@ export const trackICCShipment = async (order) => {
 export const bookICCShipment = async (userOrderId) => {
   try {
     if (!userOrderId) {
-      throw new Error("❌ userOrderId is required for booking shipment");
+      throw new Error("❌ orderId is required for booking shipment");
     }
 
     console.log("🚚 Booking shipment for:", userOrderId);
 
     const url = `${BASE_URL}/bookShipment`;
 
-    const payload = {
-      userOrderId: userOrderId, 
-    };
+    // 🔥 TRY BOTH PAYLOAD FORMATS
+    let payloads = [
+      { orderId: userOrderId },     // ✅ MOST COMMON (your case)
+      { userOrderId: userOrderId }, // fallback
+    ];
 
-    const res = await axios.post(url, payload, {
-      headers: {
-        email: process.env.ICC_EMAIL,
-        password: process.env.ICC_PASSWORD,
-        "Content-Type": "application/json",
-      },
-    });
+    let finalResponse = null;
 
-    console.log("📦 ICC BOOK RESPONSE:", res.data);
+    for (let i = 0; i < payloads.length; i++) {
+      try {
+        console.log("📦 Trying payload:", payloads[i]);
 
-    // ❌ Handle ICC error
-    if (!res.data || res.data.success === false) {
-      throw new Error(
-        res.data?.message || "Shipment booking failed from ICC"
-      );
+        const res = await axios.post(url, payloads[i], {
+          headers: {
+            email: process.env.ICC_EMAIL,
+            password: process.env.ICC_PASSWORD,
+            "Content-Type": "application/json",
+          },
+        });
+
+        console.log("📦 ICC BOOK RESPONSE:", res.data);
+
+        if (res.data && res.data.success !== false) {
+          finalResponse = res.data;
+          break;
+        }
+      } catch (err) {
+        console.warn("⚠️ Payload failed:", payloads[i]);
+      }
     }
 
-    // ✅ Extract data safely
-    const data = res.data?.data || {};
+    if (!finalResponse) {
+      throw new Error("❌ All booking payloads failed");
+    }
+
+    const data = finalResponse?.data || {};
+
+    // 🔥 ICC may nest shipment inside different keys
+    const shipment = data?.shipment || data || {};
 
     return {
-      awbNumber: data.awbNumber || null,
-      shipmentId: data.shipmentId || null,
-      raw: res.data,
+      awbNumber: shipment?.awbNumber || shipment?.awb || null,
+      shipmentId: shipment?.shipmentId || shipment?.id || null,
+      raw: finalResponse,
     };
   } catch (error) {
     console.error(

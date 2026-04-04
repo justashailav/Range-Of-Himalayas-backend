@@ -10,7 +10,11 @@ import { sendEmail } from "../utils/sendEmail.js";
 import crypto from "crypto";
 import razorpay from "../utils/razorpay.js";
 import axios from "axios";
-import { bookICCShipment, createICCOrder,trackICCShipment } from "../utils/iccService.js";
+import {
+  bookICCShipment,
+  createICCOrder,
+  trackICCShipment,
+} from "../utils/iccService.js";
 
 const adjustStock = async (cartItems, type = "deduct") => {
   const factor = type === "deduct" ? -1 : 1;
@@ -363,63 +367,62 @@ export const capturePayment = async (req, res) => {
     // 🚀 CREATE COURIER ORDER (ICC)
     // ===============================
     const triggerCourier = async () => {
-  try {
-    console.log("🚀 TriggerCourier START");
+      try {
+        console.log("🚀 TriggerCourier START");
 
-    // 🔄 ALWAYS fetch fresh order from DB
-    const freshOrder = await Order.findById(order._id);
+        // 🔄 ALWAYS fetch fresh order from DB
+        const freshOrder = await Order.findById(order._id);
 
-    if (!freshOrder) {
-      console.log("❌ Order not found in triggerCourier");
-      return;
-    }
+        if (!freshOrder) {
+          console.log("❌ Order not found in triggerCourier");
+          return;
+        }
 
-    // 🛑 Prevent duplicate shipment
-    if (freshOrder.courierOrderId) {
-      console.log("⚠️ Courier already created");
-      return;
-    }
+        // 🛑 Prevent duplicate shipment
+        if (freshOrder.courierOrderId) {
+          console.log("⚠️ Courier already created");
+          return;
+        }
 
-    console.log("📦 Creating ICC order...");
+        console.log("📦 Creating ICC order...");
 
-    // 1️⃣ Create ICC Order
-    const courierRes = await createICCOrder(freshOrder);
+        // 1️⃣ Create ICC Order
+        const courierRes = await createICCOrder(freshOrder);
 
-    console.log("📦 ICC CREATE RESPONSE:", courierRes);
+        console.log("📦 ICC CREATE RESPONSE:", courierRes);
 
-    const iccOrderId = courierRes?.userOrderId;
+        const iccOrderId = courierRes?.userOrderId;
 
-    if (!iccOrderId) {
-      throw new Error("❌ ICC userOrderId missing");
-    }
+        if (!iccOrderId) {
+          throw new Error("❌ ICC userOrderId missing");
+        }
 
-    console.log("🧾 ICC Order ID:", iccOrderId);
+        console.log("🧾 ICC Order ID:", iccOrderId);
 
-    // 2️⃣ Book Shipment
-    console.log("🚚 Booking shipment...");
-    const shipmentRes = await bookICCShipment(iccOrderId);
+        // 2️⃣ Book Shipment
+        console.log("🚚 Booking shipment...");
+        const shipmentRes = await bookICCShipment(iccOrderId);
 
-    console.log("📦 BOOK RESPONSE:", shipmentRes);
+        console.log("📦 BOOK RESPONSE:", shipmentRes);
 
-    // 3️⃣ Save in DB
-    await Order.findByIdAndUpdate(freshOrder._id, {
-      courier: "ICC",
-      courierOrderId: iccOrderId,
-      awb: shipmentRes?.awbNumber || courierRes?.awbNumber || null,
-      shipmentId:
-        shipmentRes?.shipmentId || courierRes?.shipmentId || null,
-      shippingStatus: "shipped",
-    });
+        // 3️⃣ Save in DB
+        await Order.findByIdAndUpdate(freshOrder._id, {
+          courier: "ICC",
+          courierOrderId: iccOrderId,
+          awb: shipmentRes?.awbNumber || courierRes?.awbNumber || null,
+          shipmentId: shipmentRes?.shipmentId || courierRes?.shipmentId || null,
+          shippingStatus: "shipped",
+        });
 
-    console.log("✅ Shipment created successfully");
-  } catch (err) {
-    console.error("❌ ICC FULL ERROR:", err);
+        console.log("✅ Shipment created successfully");
+      } catch (err) {
+        console.error("❌ ICC FULL ERROR:", err);
 
-    await Order.findByIdAndUpdate(order._id, {
-      shippingStatus: "failed",
-    });
-  }
-};
+        await Order.findByIdAndUpdate(order._id, {
+          shippingStatus: "failed",
+        });
+      }
+    };
     // Run in background (non-blocking like email)
     triggerCourier();
 
@@ -650,46 +653,46 @@ export const updateOrderStatus = async (req, res) => {
     await order.save({ validateBeforeSave: false });
 
     if (orderStatus === "shipped") {
-  try {
-    console.log("🚚 Triggering ICC shipment...");
+      try {
+        console.log("🚚 Triggering ICC shipment...");
 
-    if (!order.courierOrderId) {
-      const courierRes = await createICCOrder(order);
+        if (!order.courierOrderId) {
+          const courierRes = await createICCOrder(order);
 
-      console.log("📦 ICC RESPONSE:", courierRes);
+          console.log("📦 ICC RESPONSE:", courierRes);
 
-      const iccOrderId = courierRes?.raw?.data?.order?.orderId;
+          const iccOrderId = courierRes?.raw?.data?.order?.orderId;
 
-      if (!iccOrderId) {
-        throw new Error("❌ ICC orderId missing");
+          if (!iccOrderId) {
+            throw new Error("❌ ICC orderId missing");
+          }
+
+          console.log("🧾 ICC Order ID:", iccOrderId);
+
+          // 🔥 BOOK SHIPMENT
+          const shipmentRes = await bookICCShipment(iccOrderId);
+          console.log("🚀 Shipment Response:", shipmentRes);
+
+          // ✅ SAVE EVERYTHING
+          order.courier = "ICC";
+          order.courierOrderId = iccOrderId;
+          order.awb = shipmentRes?.awbNumber || courierRes?.awbNumber || null;
+          order.shipmentId =
+            shipmentRes?.shipmentId || courierRes?.shipmentId || null;
+
+          order.shippingStatus = "shipped";
+
+          await order.save({ validateBeforeSave: false });
+
+          console.log("✅ Shipment created from status update");
+        }
+      } catch (err) {
+        console.error("❌ Shipment error FULL:", err);
+
+        order.shippingStatus = "failed";
+        await order.save({ validateBeforeSave: false });
       }
-
-      console.log("🧾 ICC Order ID:", iccOrderId);
-
-      // 🔥 BOOK SHIPMENT
-      const shipmentRes = await bookICCShipment(iccOrderId);
-      console.log("🚀 Shipment Response:", shipmentRes);
-
-      // ✅ SAVE EVERYTHING
-      order.courier = "ICC";
-      order.courierOrderId = iccOrderId;
-      order.awb = shipmentRes?.awbNumber || courierRes?.awbNumber || null;
-      order.shipmentId =
-        shipmentRes?.shipmentId || courierRes?.shipmentId || null;
-
-      order.shippingStatus = "shipped";
-
-      await order.save({ validateBeforeSave: false });
-
-      console.log("✅ Shipment created from status update");
     }
-  } catch (err) {
-    console.error("❌ Shipment error FULL:", err);
-
-    order.shippingStatus = "failed";
-    await order.save({ validateBeforeSave: false });
-  }
-}
 
     // 4️⃣ Emit real-time update via socket.io
     const io = req.app.get("io");
