@@ -366,59 +366,59 @@ export const capturePayment = async (req, res) => {
     // ===============================
     // 🚀 CREATE COURIER ORDER (ICC)
     // ===============================
-    const triggerCourier = async () => {
+    const triggerCourier = async (orderId) => {
       try {
         console.log("🚀 TriggerCourier START");
 
-        // 🔄 ALWAYS fetch fresh order from DB
-        const freshOrder = await Order.findById(order._id);
+        // 🔄 Fetch fresh order
+        const order = await Order.findById(orderId);
 
-        if (!freshOrder) {
-          console.log("❌ Order not found in triggerCourier");
+        if (!order) {
+          console.log("❌ Order not found");
           return;
         }
 
-        // 🛑 Prevent duplicate shipment
-        if (freshOrder.courierOrderId) {
+        // 🛑 Already created
+        if (order.courierOrderId) {
           console.log("⚠️ Courier already created");
+          return;
+        }
+
+        // 🛑 Only allow when status is shipped
+        if (order.orderStatus !== "shipped") {
+          console.log("⏸ Not shipped yet, skipping ICC");
           return;
         }
 
         console.log("📦 Creating ICC order...");
 
         // 1️⃣ Create ICC Order
-        const courierRes = await createICCOrder(freshOrder);
+        const courierRes = await createICCOrder(order);
 
         console.log("📦 ICC CREATE RESPONSE:", courierRes);
 
         const iccOrderId = courierRes?.userOrderId;
 
         if (!iccOrderId) {
-          throw new Error("❌ ICC userOrderId missing");
+          throw new Error("❌ ICC orderId missing");
         }
 
         console.log("🧾 ICC Order ID:", iccOrderId);
 
-        // 2️⃣ Book Shipment
-        console.log("🚚 Booking shipment...");
-        const shipmentRes = await bookICCShipment(iccOrderId);
+        // ❌ DO NOT CALL bookShipment (not supported in your ICC)
 
-        console.log("📦 BOOK RESPONSE:", shipmentRes);
-
-        // 3️⃣ Save in DB
-        await Order.findByIdAndUpdate(freshOrder._id, {
+        // 2️⃣ Save in DB
+        await Order.findByIdAndUpdate(order._id, {
           courier: "ICC",
           courierOrderId: iccOrderId,
-          awb: shipmentRes?.awbNumber || courierRes?.awbNumber || null,
-          shipmentId: shipmentRes?.shipmentId || courierRes?.shipmentId || null,
-          shippingStatus: "shipped",
+          shippingStatus: "created", // 🔥 important
         });
 
-        console.log("✅ Shipment created successfully");
+        console.log("✅ ICC order created successfully");
       } catch (err) {
-        console.error("❌ ICC FULL ERROR:", err);
+        console.error("❌ TriggerCourier ERROR:", err);
 
-        await Order.findByIdAndUpdate(order._id, {
+        await Order.findByIdAndUpdate(orderId, {
           shippingStatus: "failed",
         });
       }
@@ -1355,30 +1355,42 @@ export const getTrackingByOrderId = async (req, res) => {
       });
     }
 
-    // 2️⃣ Shipment must exist
+    // 🔥 BEFORE SHIPMENT → return DB status
     if (!order.courierOrderId) {
-      return res.status(400).json({
-        success: false,
-        message: "Shipment not created yet",
+      return res.status(200).json({
+        success: true,
+        type: "manual", // 🔥 important
+        data: {
+          status: order.orderStatus,
+          awb: null,
+          activities: order.statusHistory || [],
+        },
       });
     }
 
-    // 3️⃣ Call tracking service (UPDATED FUNCTION)
+    // 2️⃣ Call ICC tracking
     const trackingData = await trackICCShipment(order);
 
-    // 4️⃣ Handle failure safely
+    // 🔥 ICC not started yet
     if (!trackingData.success) {
-      return res.status(400).json({
-        success: false,
-        message: trackingData.message || "Tracking failed",
+      return res.status(200).json({
+        success: true,
+        type: "manual",
+        data: {
+          status: order.orderStatus,
+          awb: null,
+          activities: order.statusHistory || [],
+        },
       });
     }
 
-    // 5️⃣ Return CLEAN formatted response
+    // 3️⃣ Return ICC tracking
     return res.status(200).json({
       success: true,
+      type: "icc", // 🔥 important
       data: trackingData.formatted,
     });
+
   } catch (error) {
     console.error("❌ Tracking API Error:", error);
 
