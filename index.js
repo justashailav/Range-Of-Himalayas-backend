@@ -24,6 +24,7 @@ import contactRoute from "./routes/contactRoute.js";
 import galleryRoute from "./routes/galleryRoute.js";
 import blogRoute from "./routes/blogRoutes.js";
 import chatRoute from "./routes/chatRoute.js"
+import batchRoute from "./routes/batchRoute.js"
 const app = express();
 dotenv.config();
 
@@ -78,6 +79,7 @@ app.use("/api/v1/user", contactRoute);
 app.use("/api/v1/gallery", galleryRoute);
 app.use("/api/v1/blog", blogRoute);
 app.use("/api/v1/chat",chatRoute)
+app.use("/api/v1/batch",batchRoute)
 
 // ---------- Server & Socket.io ----------
 const server = http.createServer(app);
