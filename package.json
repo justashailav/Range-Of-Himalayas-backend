@@ -28,6 +28,7 @@
     "openai": "^6.16.0",
     "paypal-rest-sdk": "^1.8.1",
     "pdfkit": "^0.17.1",
+    "qrcode": "^1.5.4",
     "qs": "^6.15.0",
     "razorpay": "^2.9.6",
     "resend": "^6.4.2",
