@@ -1,271 +1,175 @@
 import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
 
-export const generateInvoicePDFBuffer = async (
-  order,
-  products = [],
-  user = {},
-) => {
+export const generateInvoicePDFBuffer = async (order, products = [], user = {}) => {
   return new Promise(async (resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const doc = new PDFDocument({ size: "A4", margin: 0 }); // Margin 0 for full-bleed background elements
     const buffers = [];
 
     doc.on("data", buffers.push.bind(buffers));
     doc.on("end", () => resolve(Buffer.concat(buffers)));
     doc.on("error", reject);
 
-    // 🎨 COLORS
-    const primaryColor = "#B23A2E";
-    const secondaryColor = "#2D3436";
-    const mutedColor = "#636E72";
-    const borderColor = "#DFE6E9";
-    const tableHeaderColor = "#F8F9FA";
+    // 🎨 THEME COLORS
+    const primaryRed = "#B23A2E";
+    const darkSlate = "#2D3436";
+    const lightGray = "#F9F9F9";
+    const borderGray = "#EEF2F3";
+    const textMuted = "#636E72";
 
     const leftMargin = 50;
-    const rightColumnX = 380;
-    const pageWidth = doc.page.width - 100;
+    const rightMargin = 545;
+    const contentWidth = 495;
 
-    const invoiceNumber = `INV_${order?._id?.toString() || "N/A"}`;
-    const date = new Date(order.createdAt || order.orderDate);
-    const formattedDate = !isNaN(date)
-      ? date.toLocaleDateString("en-IN")
-      : "N/A";
+    // ================= DESIGN ELEMENTS =================
+    // Sidebar Accent
+    doc.rect(0, 0, 10, 842).fill(primaryRed);
 
     // ================= HEADER =================
+    doc.rect(10, 0, 585, 120).fill(lightGray);
+
     doc
-      .fillColor(primaryColor)
-      .fontSize(24)
+      .fillColor(primaryRed)
+      .fontSize(22)
       .font("Helvetica-Bold")
-      .text("RANGE OF HIMALAYAS", leftMargin, 50);
+      .text("RANGE OF HIMALAYAS", leftMargin, 40);
 
     doc
-      .fillColor(mutedColor)
-      .fontSize(9)
-      .text("AUTHENTIC WELLNESS FROM THE PEAKS", leftMargin, 75);
-
-    doc
-      .fillColor(secondaryColor)
-      .fontSize(28)
-      .font("Helvetica-Bold")
-      .text("INVOICE", 0, 50, { align: "right", indent: 50 });
-
-    doc
-      .moveTo(leftMargin, 100)
-      .lineTo(545, 100)
-      .strokeColor(borderColor)
-      .stroke();
-
-    // ================= BILL TO =================
-    doc
-      .fillColor(primaryColor)
-      .fontSize(10)
-      .font("Helvetica-Bold")
-      .text("BILL TO", leftMargin, 120);
-
-    doc
-      .fillColor(secondaryColor)
-      .fontSize(12)
-      .font("Helvetica-Bold")
-      .text(user?.name || "Customer", leftMargin, 135);
-
-    doc
-      .fillColor(mutedColor)
-      .fontSize(10)
+      .fillColor(textMuted)
+      .fontSize(8)
       .font("Helvetica")
-      .text(order.addressInfo?.phone || "")
-      .text(order.addressInfo?.address || "")
-      .text(
-        `${order.addressInfo?.city || ""} - ${
-          order.addressInfo?.pincode || ""
-        }`,
-      );
+      .text("AUTHENTIC WELLNESS FROM THE PEAKS", leftMargin, 65, { characterSpacing: 1 });
 
-    // ================= SHIP TO =================
     doc
-      .fillColor(primaryColor)
-      .fontSize(10)
+      .fillColor(darkSlate)
+      .fontSize(26)
       .font("Helvetica-Bold")
-      .text("SHIP TO", leftMargin, 200);
+      .text("INVOICE", 400, 40, { align: "right", width: 145 });
 
-    doc
-      .fillColor(mutedColor)
-      .fontSize(10)
-      .font("Helvetica")
-      .text(user?.name || "Customer")
-      .text(order.addressInfo?.phone || "")
+    // ================= INVOICE META (Top Right) =================
+    const invoiceNumber = `INV_${order?._id?.toString() || "N/A"}`;
+    const metaY = 75;
+    doc.fillColor(textMuted).fontSize(9).font("Helvetica").text("Invoice No:", 400, metaY, { align: "right", width: 60 });
+    doc.fillColor(darkSlate).font("Helvetica-Bold").text(invoiceNumber, 465, metaY, { align: "right", width: 80 });
+    
+    const date = new Date(order.createdAt || order.orderDate);
+    const formattedDate = !isNaN(date) ? date.toLocaleDateString("en-IN") : "N/A";
+    
+    doc.fillColor(textMuted).font("Helvetica").text("Date:", 400, metaY + 12, { align: "right", width: 60 });
+    doc.fillColor(darkSlate).font("Helvetica-Bold").text(formattedDate, 465, metaY + 12, { align: "right", width: 80 });
+
+    // ================= ADDRESS SECTION =================
+    let currentY = 150;
+
+    // Bill To
+    doc.fillColor(primaryRed).fontSize(10).font("Helvetica-Bold").text("BILL TO", leftMargin, currentY);
+    doc.fillColor(darkSlate).fontSize(12).text(user?.name || "Customer", leftMargin, currentY + 15);
+    doc.fillColor(textMuted).fontSize(9).font("Helvetica")
+      .text(order.addressInfo?.phone || "", leftMargin, currentY + 30)
       .text(order.addressInfo?.address || "")
-      .text(
-        `${order.addressInfo?.city || ""} - ${
-          order.addressInfo?.pincode || ""
-        }`,
-      );
+      .text(`${order.addressInfo?.city || ""} - ${order.addressInfo?.pincode || ""}`);
 
-    // ================= META =================
-    const infoTableY = 120;
-
+    // Payment Info (Boxed)
+    const boxX = 350;
+    doc.rect(boxX, currentY - 10, 195, 75).strokeColor(borderGray).stroke();
+    doc.fillColor(primaryRed).fontSize(8).font("Helvetica-Bold").text("PAYMENT DETAILS", boxX + 10, currentY);
+    
     const drawMetaRow = (label, value, y) => {
-      doc
-        .fillColor(mutedColor)
-        .font("Helvetica-Bold")
-        .fontSize(9)
-        .text(label, rightColumnX, y);
-
-      doc
-        .fillColor(secondaryColor)
-        .font("Helvetica")
-        .text(value, rightColumnX + 90, y, { align: "right", width: 100 });
+      doc.fillColor(textMuted).font("Helvetica").text(label, boxX + 10, y);
+      doc.fillColor(darkSlate).font("Helvetica-Bold").text(value, boxX + 100, y, { align: "right", width: 75 });
     };
 
-    drawMetaRow("Invoice No:", invoiceNumber, infoTableY);
-    drawMetaRow("Order Date:", formattedDate, infoTableY + 15);
-    drawMetaRow(
-      "Payment:",
-      order.paymentMethod?.toUpperCase() || "COD",
-      infoTableY + 30,
-    );
-    drawMetaRow(
-      "Status:",
-      (order.orderStatus || "Pending").toUpperCase(),
-      infoTableY + 45,
-    );
-
-    drawMetaRow(
-      "Payment Status:",
-      order.paymentStatus?.toUpperCase() || "PAID",
-      infoTableY + 60,
-    );
-
-    drawMetaRow("Courier Ref:", order.iccOrderId || "PENDING", infoTableY + 75);
+    drawMetaRow("Method:", order.paymentMethod?.toUpperCase() || "COD", currentY + 15);
+    drawMetaRow("Status:", (order.paymentStatus || "PAID").toUpperCase(), currentY + 28);
+    drawMetaRow("Order Ref:", order.iccOrderId || "PENDING", currentY + 41);
 
     // ================= TABLE =================
-    let currentY = 280;
+    currentY = 270;
 
-    doc.rect(leftMargin, currentY, pageWidth, 25).fill(tableHeaderColor);
-
-    doc.fillColor(secondaryColor).font("Helvetica-Bold").fontSize(10);
-    doc.text("ITEM", leftMargin + 10, currentY + 8);
+    // Table Header
+    doc.rect(leftMargin, currentY, contentWidth, 25).fill(darkSlate);
+    doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(9);
+    doc.text("ITEM DESCRIPTION", leftMargin + 10, currentY + 8);
     doc.text("PRICE", 330, currentY + 8, { align: "right", width: 60 });
     doc.text("QTY", 400, currentY + 8, { align: "center", width: 40 });
     doc.text("TOTAL", 465, currentY + 8, { align: "right", width: 80 });
 
     currentY += 30;
 
-    (order.cartItems || []).forEach((item) => {
+    // Table Rows
+    (order.cartItems || []).forEach((item, i) => {
       const price = Number(item.price) || 0;
       const total = price * item.quantity;
 
-      doc.fillColor(secondaryColor).font("Helvetica").fontSize(10);
-
-      doc.text(item.title, leftMargin + 10, currentY);
-
-      if (item.weight || item.size) {
-        doc
-          .fontSize(8)
-          .fillColor(mutedColor)
-          .text(item.weight || item.size, leftMargin + 10, currentY + 12);
+      // Alternating row background
+      if (i % 2 === 0) {
+        doc.rect(leftMargin, currentY - 5, contentWidth, 25).fill("#FCFCFC");
       }
 
-      doc.fillColor(secondaryColor).fontSize(10);
-      doc.text(`₹. ${price}`, 330, currentY, { align: "right", width: 60 });
-      doc.text(item.quantity, 400, currentY, {
-        align: "center",
-        width: 40,
-      });
-      doc.text(`₹. ${total.toFixed(2)}`, 465, currentY, {
-        align: "right",
-        width: 80,
-      });
+      doc.fillColor(darkSlate).font("Helvetica-Bold").fontSize(9).text(item.title, leftMargin + 10, currentY);
+      
+      if (item.weight || item.size) {
+        doc.fillColor(textMuted).fontSize(7).font("Helvetica").text(item.weight || item.size, leftMargin + 10, currentY + 11);
+      }
 
-      currentY += 30;
+      doc.fillColor(darkSlate).font("Helvetica").fontSize(9);
+      doc.text(`Rs. ${price.toLocaleString()}`, 330, currentY, { align: "right", width: 60 });
+      doc.text(item.quantity, 400, currentY, { align: "center", width: 40 });
+      doc.text(`Rs. ${total.toLocaleString()}`, 465, currentY, { align: "right", width: 80 });
+
+      currentY += 28;
     });
+
+    // ================= SUMMARY =================
     currentY += 20;
+    const summaryX = 350;
 
     const drawSummaryRow = (label, value, isTotal = false) => {
       if (isTotal) {
-        doc.rect(350, currentY - 5, 195, 25).fill(primaryColor);
-        doc.fillColor("#fff").font("Helvetica-Bold").fontSize(12);
+        doc.rect(summaryX, currentY - 8, 195, 30).fill(primaryRed);
+        doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(11);
       } else {
-        doc.fillColor(mutedColor).font("Helvetica").fontSize(10);
+        doc.fillColor(textMuted).font("Helvetica").fontSize(10);
       }
-
-      doc.text(label, 360, currentY);
+      doc.text(label, summaryX + 10, currentY);
       doc.text(value, 465, currentY, { align: "right", width: 80 });
-
-      currentY += isTotal ? 30 : 20;
+      currentY += isTotal ? 35 : 22;
     };
 
-    // ✅ Subtotal (same as total since no discount shown)
-    drawSummaryRow("Subtotal", `₹ ${order.totalAmount}`);
-
-    // ================= COD =================
-    if (order.paymentMethod === "cod") {
-      doc
-        .fillColor(primaryColor)
-        .font("Helvetica-Bold")
-        .fontSize(10)
-        .text("Partial COD Details", 360, currentY);
-
-      currentY += 15;
-
-      drawSummaryRow("Advance Paid", `₹ ${order.codAdvanceAmount || 0}`);
-      drawSummaryRow(
-        "Remaining (Pay on Delivery)",
-        `₹ ${order.codRemainingAmount || 0}`,
-      );
-      drawSummaryRow(
-        "Advance Status",
-        order.codAdvancePaid ? "PAID" : "PENDING",
-      );
-    }
-
-    // ✅ Shipping
+    drawSummaryRow("Subtotal", `Rs. ${order.totalAmount.toLocaleString()}`);
     drawSummaryRow("Shipping", "FREE");
 
-    // ✅ Grand Total
-    drawSummaryRow("GRAND TOTAL", `₹ ${order.totalAmount}`, true);
-    // ================= QR CODE =================
+    if (order.paymentMethod === "cod") {
+      doc.fillColor(primaryRed).fontSize(8).font("Helvetica-Bold").text("COD BREAKDOWN", summaryX + 10, currentY - 5);
+      currentY += 12;
+      drawSummaryRow("Advance Paid", `Rs. ${order.codAdvanceAmount || 0}`);
+      drawSummaryRow("Remaining", `Rs. ${order.codRemainingAmount || 0}`);
+    }
+
+    drawSummaryRow("GRAND TOTAL", `Rs. ${order.totalAmount.toLocaleString()}`, true);
+
+    // ================= FOOTER & QR =================
+    const footerY = 720;
+    
+    // QR Code
     const qrData = `https://www.rangeofhimalayas.co.in/order-tracking`;
     const qrImage = await QRCode.toDataURL(qrData);
+    doc.image(qrImage, leftMargin, footerY - 20, { width: 70 });
+    doc.fillColor(textMuted).fontSize(7).text("SCAN TO TRACK", leftMargin + 5, footerY + 55);
 
-    doc.image(qrImage, 50, 700, { width: 80 });
-
-    // ================= FOOTER =================
-    const footerY = 750;
-
-    doc
-      .moveTo(leftMargin, footerY)
-      .lineTo(545, footerY)
-      .strokeColor(borderColor)
-      .stroke();
+    // Decorative Line
+    doc.moveTo(leftMargin, footerY + 80).lineTo(rightMargin, footerY + 80).strokeColor(borderGray).stroke();
 
     doc
-      .fillColor(mutedColor)
-      .fontSize(9)
-      .text(
-        "Thank you for supporting sustainable Himalayan communities.",
-        0,
-        footerY + 15,
-        { align: "center" },
-      );
-
-    doc
+      .fillColor(textMuted)
       .fontSize(8)
-      .text(
-        "Support: +91-6230867344 | contactrangeofhimalayas@gmail.com",
-        0,
-        footerY + 30,
-        { align: "center" },
-      );
+      .text("Thank you for supporting sustainable Himalayan communities.", 0, footerY + 90, { align: "center", width: 595 })
+      .text("Support: +91-6230867344 | contactrangeofhimalayas@gmail.com", 0, footerY + 102, { align: "center", width: 595 });
 
     doc
       .fontSize(7)
       .fillColor("#ABB2B9")
-      .text(
-        "This is a computer-generated document. No signature required.",
-        0,
-        footerY + 45,
-        { align: "center" },
-      );
+      .text("This is a computer-generated document. No signature required.", 0, footerY + 115, { align: "center", width: 595 });
 
     doc.end();
   });
