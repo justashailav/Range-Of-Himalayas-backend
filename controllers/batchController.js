@@ -1,6 +1,5 @@
 import { Batch } from "../models/batchModel.js";
 import QRCode from "qrcode";
-import { Batch } from "../models/batchModel.js";
 
 export const createBatch = async (req, res) => {
   try {
