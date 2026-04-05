@@ -11,6 +11,7 @@ import crypto from "crypto";
 import razorpay from "../utils/razorpay.js";
 
 import { createICCOrder, trackICCShipment } from "../utils/iccService.js";
+import { sendWhatsApp } from "../utils/whatsapp.js";
 
 const adjustStock = async (cartItems, type = "deduct") => {
   const factor = type === "deduct" ? -1 : 1;
@@ -435,6 +436,49 @@ export const capturePayment = async (req, res) => {
 
     // Execute email as a background task
     triggerEmail();
+
+    // ===============================
+// 📲 WHATSAPP AUTOMATION
+// ===============================
+const triggerWhatsApp = async () => {
+  try {
+    const user = await User.findById(order.userId);
+
+    const phone = order?.addressInfo?.phone;
+    if (!phone) {
+      console.log("⚠️ No phone number, skipping WhatsApp");
+      return;
+    }
+
+    // 🧾 ORDER CONFIRMATION MESSAGE
+    let message = `🛍️ *Order Confirmed!*\n\n`;
+    message += `📦 Order ID: ${order._id}\n`;
+    message += `💰 Amount: ₹${order.totalAmount}\n`;
+
+    // 💳 PAYMENT INFO
+    if (order.paymentMethod === "cod") {
+      message += `\n💳 Advance Paid: ₹${order.codAdvanceAmount || 200}`;
+      message += `\n💸 Remaining: ₹${order.codRemainingAmount || 0}`;
+    } else {
+      message += `\n💳 Payment: Paid`;
+    }
+
+    // 🚚 TRACK LINK
+    message += `\n\n📍 Track your order:\nhttps://www.rangeofhimalayas.co.in/order-tracking`;
+
+    // 📞 SUPPORT
+    message += `\n\n📞 Support: +91-6230867344`;
+
+    await sendWhatsApp(phone, message);
+
+    console.log("✅ WhatsApp sent");
+  } catch (err) {
+    console.error("❌ WhatsApp error (non-blocking):", err.message);
+  }
+};
+
+// Run in background (NON-BLOCKING)
+triggerWhatsApp();
 
     console.log("========== RAZORPAY VERIFY END ==========");
 
