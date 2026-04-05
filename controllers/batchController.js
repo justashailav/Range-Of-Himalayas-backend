@@ -1,7 +1,24 @@
 import { Batch } from "../models/batchModel.js";
+import QRCode from "qrcode";
+import { Batch } from "../models/batchModel.js";
+
 export const createBatch = async (req, res) => {
   try {
+    // 1. Create batch instance first (so batchId gets generated)
     const batch = new Batch(req.body);
+
+    // 2. Save once to generate batchId (from your pre-save hook)
+    await batch.save();
+
+    // 3. Create URL for QR
+    const url = `http://www.rangeofhimalayas.co.in/batch/${batch.batchId}`;
+
+    // 4. Generate QR code
+    const qrCode = await QRCode.toDataURL(url);
+
+    // 5. Save QR in DB
+    batch.qrCode = qrCode;
+
     await batch.save();
 
     res.status(201).json({
@@ -16,10 +33,6 @@ export const createBatch = async (req, res) => {
     });
   }
 };
-
-
-
-// ✅ GET ALL BATCHES
 export const getAllBatches = async (req, res) => {
   try {
     const batches = await Batch.find().sort({ createdAt: -1 });
@@ -37,9 +50,6 @@ export const getAllBatches = async (req, res) => {
   }
 };
 
-
-
-// ✅ GET SINGLE BATCH (by batchId)
 export const getBatchById = async (req, res) => {
   try {
     const batch = await Batch.findOne({ batchId: req.params.batchId });
