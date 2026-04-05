@@ -3,7 +3,7 @@ import QRCode from "qrcode";
 
 export const generateInvoicePDFBuffer = async (order, products = [], user = {}) => {
   return new Promise(async (resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", margin: 0 }); // Margin 0 for full-bleed background elements
+    const doc = new PDFDocument({ size: "A4", margin: 0 });
     const buffers = [];
 
     doc.on("data", buffers.push.bind(buffers));
@@ -18,15 +18,13 @@ export const generateInvoicePDFBuffer = async (order, products = [], user = {}) 
     const textMuted = "#636E72";
 
     const leftMargin = 50;
-    const rightMargin = 545;
     const contentWidth = 495;
 
-    // ================= DESIGN ELEMENTS =================
     // Sidebar Accent
     doc.rect(0, 0, 10, 842).fill(primaryRed);
 
     // ================= HEADER =================
-    doc.rect(10, 0, 585, 120).fill(lightGray);
+    doc.rect(10, 0, 585, 125).fill(lightGray);
 
     doc
       .fillColor(primaryRed)
@@ -46,47 +44,50 @@ export const generateInvoicePDFBuffer = async (order, products = [], user = {}) 
       .font("Helvetica-Bold")
       .text("INVOICE", 400, 40, { align: "right", width: 145 });
 
-    // ================= INVOICE META (Top Right) =================
+    // ================= INVOICE META (FIXED OVERLAP) =================
     const invoiceNumber = `INV_${order?._id?.toString() || "N/A"}`;
     const metaY = 75;
-    doc.fillColor(textMuted).fontSize(9).font("Helvetica").text("Invoice No:", 400, metaY, { align: "right", width: 60 });
-    doc.fillColor(darkSlate).font("Helvetica-Bold").text(invoiceNumber, 465, metaY, { align: "right", width: 80 });
+    
+    // Use a smaller font for the ID and more width to prevent wrapping onto the date
+    doc.fillColor(textMuted).fontSize(9).font("Helvetica").text("Invoice No:", 350, metaY, { align: "right", width: 80 });
+    doc.fillColor(darkSlate).fontSize(8.5).font("Helvetica-Bold").text(invoiceNumber, 440, metaY, { align: "right", width: 105 });
     
     const date = new Date(order.createdAt || order.orderDate);
     const formattedDate = !isNaN(date) ? date.toLocaleDateString("en-IN") : "N/A";
     
-    doc.fillColor(textMuted).font("Helvetica").text("Date:", 400, metaY + 12, { align: "right", width: 60 });
-    doc.fillColor(darkSlate).font("Helvetica-Bold").text(formattedDate, 465, metaY + 12, { align: "right", width: 80 });
+    // Increased gap to 18 to ensure no line collision
+    doc.fillColor(textMuted).fontSize(9).font("Helvetica").text("Date:", 350, metaY + 18, { align: "right", width: 80 });
+    doc.fillColor(darkSlate).font("Helvetica-Bold").text(formattedDate, 440, metaY + 18, { align: "right", width: 105 });
 
-    // ================= ADDRESS SECTION =================
-    let currentY = 150;
+    // ================= ADDRESS & PAYMENT (FIXED COINCIDING) =================
+    let currentY = 160;
 
-    // Bill To
+    // Bill To (Left Side)
     doc.fillColor(primaryRed).fontSize(10).font("Helvetica-Bold").text("BILL TO", leftMargin, currentY);
-    doc.fillColor(darkSlate).fontSize(12).text(user?.name || "Customer", leftMargin, currentY + 15);
+    doc.fillColor(darkSlate).fontSize(11).text(user?.name || "Customer", leftMargin, currentY + 15);
     doc.fillColor(textMuted).fontSize(9).font("Helvetica")
-      .text(order.addressInfo?.phone || "", leftMargin, currentY + 30)
-      .text(order.addressInfo?.address || "")
+      .text(order.addressInfo?.phone || "", leftMargin, currentY + 28)
+      .text(order.addressInfo?.address || "", { width: 250 }) // Constrain width so it doesn't bleed into the box
       .text(`${order.addressInfo?.city || ""} - ${order.addressInfo?.pincode || ""}`);
 
-    // Payment Info (Boxed)
-    const boxX = 350;
-    doc.rect(boxX, currentY - 10, 195, 75).strokeColor(borderGray).stroke();
-    doc.fillColor(primaryRed).fontSize(8).font("Helvetica-Bold").text("PAYMENT DETAILS", boxX + 10, currentY);
+    // Payment Info Box (Right Side - Pushed further right and height adjusted)
+    const boxX = 365; 
+    const boxWidth = 180;
+    doc.rect(boxX, currentY - 5, boxWidth, 85).strokeColor(borderGray).stroke();
+    doc.fillColor(primaryRed).fontSize(8).font("Helvetica-Bold").text("PAYMENT DETAILS", boxX + 10, currentY + 5);
     
     const drawMetaRow = (label, value, y) => {
-      doc.fillColor(textMuted).font("Helvetica").text(label, boxX + 10, y);
-      doc.fillColor(darkSlate).font("Helvetica-Bold").text(value, boxX + 100, y, { align: "right", width: 75 });
+      doc.fillColor(textMuted).font("Helvetica").fontSize(8.5).text(label, boxX + 10, y);
+      doc.fillColor(darkSlate).font("Helvetica-Bold").text(value, boxX + 80, y, { align: "right", width: 90 });
     };
 
-    drawMetaRow("Method:", order.paymentMethod?.toUpperCase() || "COD", currentY + 15);
-    drawMetaRow("Status:", (order.paymentStatus || "PAID").toUpperCase(), currentY + 28);
-    drawMetaRow("Order Ref:", order.iccOrderId || "PENDING", currentY + 41);
+    drawMetaRow("Method:", order.paymentMethod?.toUpperCase() || "COD", currentY + 22);
+    drawMetaRow("Status:", (order.paymentStatus || "PAID").toUpperCase(), currentY + 37);
+    drawMetaRow("Order Ref:", order.iccOrderId || "PENDING", currentY + 52);
 
     // ================= TABLE =================
-    currentY = 270;
+    currentY = 285; // Lowered table starting position to clear the address box
 
-    // Table Header
     doc.rect(leftMargin, currentY, contentWidth, 25).fill(darkSlate);
     doc.fillColor("#FFFFFF").font("Helvetica-Bold").fontSize(9);
     doc.text("ITEM DESCRIPTION", leftMargin + 10, currentY + 8);
@@ -96,17 +97,15 @@ export const generateInvoicePDFBuffer = async (order, products = [], user = {}) 
 
     currentY += 30;
 
-    // Table Rows
     (order.cartItems || []).forEach((item, i) => {
       const price = Number(item.price) || 0;
       const total = price * item.quantity;
 
-      // Alternating row background
       if (i % 2 === 0) {
         doc.rect(leftMargin, currentY - 5, contentWidth, 25).fill("#FCFCFC");
       }
 
-      doc.fillColor(darkSlate).font("Helvetica-Bold").fontSize(9).text(item.title, leftMargin + 10, currentY);
+      doc.fillColor(darkSlate).font("Helvetica-Bold").fontSize(9).text(item.title, leftMargin + 10, currentY, { width: 200 });
       
       if (item.weight || item.size) {
         doc.fillColor(textMuted).fontSize(7).font("Helvetica").text(item.weight || item.size, leftMargin + 10, currentY + 11);
@@ -148,17 +147,14 @@ export const generateInvoicePDFBuffer = async (order, products = [], user = {}) 
 
     drawSummaryRow("GRAND TOTAL", `Rs. ${order.totalAmount.toLocaleString()}`, true);
 
-    // ================= FOOTER & QR =================
+    // ================= FOOTER =================
     const footerY = 720;
-    
-    // QR Code
     const qrData = `https://www.rangeofhimalayas.co.in/order-tracking`;
     const qrImage = await QRCode.toDataURL(qrData);
     doc.image(qrImage, leftMargin, footerY - 20, { width: 70 });
     doc.fillColor(textMuted).fontSize(7).text("SCAN TO TRACK", leftMargin + 5, footerY + 55);
 
-    // Decorative Line
-    doc.moveTo(leftMargin, footerY + 80).lineTo(rightMargin, footerY + 80).strokeColor(borderGray).stroke();
+    doc.moveTo(leftMargin, footerY + 80).lineTo(545, footerY + 80).strokeColor(borderGray).stroke();
 
     doc
       .fillColor(textMuted)
