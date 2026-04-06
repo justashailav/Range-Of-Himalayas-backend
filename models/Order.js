@@ -18,6 +18,7 @@ const orderSchema = new mongoose.Schema(
         price: String,
         quantity: Number,
         size: String,
+        batchId: String,
         weight: {
           type: String,
           enum: [

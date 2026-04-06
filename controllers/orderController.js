@@ -12,7 +12,29 @@ import razorpay from "../utils/razorpay.js";
 
 import { createICCOrder, trackICCShipment } from "../utils/iccService.js";
 import { sendWhatsApp } from "../utils/whatsapp.js";
+import { Batch } from "../models/batchModel.js";
 
+const assignBatchToItems = async (items) => {
+  for (let item of items) {
+    // 🔥 Find batch for this product
+    const batch = await Batch.findOne({
+      productName: item.title, // ⚠️ IMPORTANT (match this properly)
+      remainingUnits: { $gt: 0 },
+    }).sort({ createdAt: 1 }); // FIFO
+
+    if (!batch) {
+      throw new Error(`No batch available for ${item.title}`);
+    }
+
+    if (batch.remainingUnits < item.quantity) {
+      throw new Error(`Insufficient stock in batch ${batch.batchId}`);
+    }
+
+    item.batchId = batch.batchId;
+  }
+
+  return items;
+};
 const adjustStock = async (cartItems, type = "deduct") => {
   const factor = type === "deduct" ? -1 : 1;
 
@@ -98,6 +120,7 @@ export const createOrder = async (req, res) => {
       totalAmount,
       cartId,
       code,
+
     } = req.body;
 
     if (!userId || (!cartItems.length && !boxes.length)) {
@@ -204,7 +227,6 @@ export const createOrder = async (req, res) => {
     console.error("🔥 Order creation error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error.",
     });
   }
 };
@@ -347,6 +369,22 @@ export const capturePayment = async (req, res) => {
 
     // Deduct stock, handle coupons, and clear cart
     await adjustStock(order.cartItems, "deduct");
+    order.cartItems = await assignBatchToItems(order.cartItems);
+    const updateBatchStock = async (items) => {
+      for (let item of items) {
+        if (!item.batchId) continue;
+
+        const batch = await Batch.findOne({ batchId: item.batchId });
+
+        batch.remainingUnits -= item.quantity;
+
+        await batch.save();
+
+        console.log(`📉 Batch ${batch.batchId} updated`);
+      }
+    };
+
+    await updateBatchStock(order.cartItems);
 
     if (order.code) {
       const couponDoc = await Coupon.findById(order.code);
@@ -359,10 +397,6 @@ export const capturePayment = async (req, res) => {
     );
     await order.save();
     console.log("✅ Database record finalized");
-
-    // ===============================
-    // 🚀 CREATE COURIER ORDER (ICC)
-    // ===============================
     const triggerCourier = async (orderId) => {
       try {
         console.log("🚀 TriggerCourier START");
@@ -437,48 +471,45 @@ export const capturePayment = async (req, res) => {
     // Execute email as a background task
     triggerEmail();
 
-    // ===============================
-// 📲 WHATSAPP AUTOMATION
-// ===============================
-const triggerWhatsApp = async () => {
-  try {
-    const user = await User.findById(order.userId);
+    const triggerWhatsApp = async () => {
+      try {
+        const user = await User.findById(order.userId);
 
-    const phone = order?.addressInfo?.phone;
-    if (!phone) {
-      console.log("⚠️ No phone number, skipping WhatsApp");
-      return;
-    }
+        const phone = order?.addressInfo?.phone;
+        if (!phone) {
+          console.log("⚠️ No phone number, skipping WhatsApp");
+          return;
+        }
 
-    // 🧾 ORDER CONFIRMATION MESSAGE
-    let message = `🛍️ *Order Confirmed!*\n\n`;
-    message += `📦 Order ID: ${order._id}\n`;
-    message += `💰 Amount: ₹${order.totalAmount}\n`;
+        // 🧾 ORDER CONFIRMATION MESSAGE
+        let message = `🛍️ *Order Confirmed!*\n\n`;
+        message += `📦 Order ID: ${order._id}\n`;
+        message += `💰 Amount: ₹${order.totalAmount}\n`;
 
-    // 💳 PAYMENT INFO
-    if (order.paymentMethod === "cod") {
-      message += `\n💳 Advance Paid: ₹${order.codAdvanceAmount || 200}`;
-      message += `\n💸 Remaining: ₹${order.codRemainingAmount || 0}`;
-    } else {
-      message += `\n💳 Payment: Paid`;
-    }
+        // 💳 PAYMENT INFO
+        if (order.paymentMethod === "cod") {
+          message += `\n💳 Advance Paid: ₹${order.codAdvanceAmount || 200}`;
+          message += `\n💸 Remaining: ₹${order.codRemainingAmount || 0}`;
+        } else {
+          message += `\n💳 Payment: Paid`;
+        }
 
-    // 🚚 TRACK LINK
-    message += `\n\n📍 Track your order:\nhttps://www.rangeofhimalayas.co.in/order-tracking`;
+        // 🚚 TRACK LINK
+        message += `\n\n📍 Track your order:\nhttps://www.rangeofhimalayas.co.in/order-tracking`;
 
-    // 📞 SUPPORT
-    message += `\n\n📞 Support: +91-6230867344`;
+        // 📞 SUPPORT
+        message += `\n\n📞 Support: +91-6230867344`;
 
-    await sendWhatsApp(phone, message);
+        await sendWhatsApp(phone, message);
 
-    console.log("✅ WhatsApp sent");
-  } catch (err) {
-    console.error("❌ WhatsApp error (non-blocking):", err.message);
-  }
-};
+        console.log("✅ WhatsApp sent");
+      } catch (err) {
+        console.error("❌ WhatsApp error (non-blocking):", err.message);
+      }
+    };
 
-// Run in background (NON-BLOCKING)
-triggerWhatsApp();
+    // Run in background (NON-BLOCKING)
+    triggerWhatsApp();
 
     console.log("========== RAZORPAY VERIFY END ==========");
 
@@ -512,8 +543,7 @@ export const getOrderById = async (req, res) => {
 
     // 🔥 ALWAYS USE LATEST STATUS
     if (order.statusHistory && order.statusHistory.length > 0) {
-      const latest =
-        order.statusHistory[order.statusHistory.length - 1];
+      const latest = order.statusHistory[order.statusHistory.length - 1];
 
       if (latest?.status) {
         order.orderStatus = latest.status;
@@ -726,9 +756,7 @@ export const updateOrderStatus = async (req, res) => {
       (order.orderStatus || "").toLowerCase(),
     );
 
-    const newIndex = validFlow.indexOf(
-      (orderStatus || "").toLowerCase(),
-    );
+    const newIndex = validFlow.indexOf((orderStatus || "").toLowerCase());
 
     if (newIndex < currentIndex) {
       console.log("⚠️ Ignoring backward status update");
