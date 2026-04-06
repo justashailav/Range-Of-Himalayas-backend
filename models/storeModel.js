@@ -163,5 +163,5 @@ const storeSchema = new mongoose.Schema({
   notes: String
 
 }, { timestamps: true });
-
+storeSchema.index({ location: "2dsphere" });
 export const Store= mongoose.model("Store", storeSchema);

@@ -127,7 +127,7 @@ export const findNearestStore = async (req, res) => {
     if (!lng || !lat) {
       return res.status(400).json({
         success: 0,
-        message: "Longitude & Latitude required"
+        message: "Longitude & Latitude required",
       });
     }
 
@@ -136,24 +136,25 @@ export const findNearestStore = async (req, res) => {
         $geoNear: {
           near: {
             type: "Point",
-            coordinates: [parseFloat(lng), parseFloat(lat)]
+            coordinates: [parseFloat(lng), parseFloat(lat)],
           },
           distanceField: "distance",
-          spherical: true
-        }
+          maxDistance: 10000, // 🔥 10 KM (IMPORTANT)
+          spherical: true,
+        },
       },
       {
         $match: {
           isActive: 1,
-          isAcceptingOrders: 1
-        }
+          isAcceptingOrders: 1,
+        },
       },
       {
         $sort: {
           priority: -1,
-          distance: 1
-        }
-      }
+          distance: 1,
+        },
+      },
     ]);
 
     let filteredStores = stores;
@@ -177,20 +178,18 @@ export const findNearestStore = async (req, res) => {
     if (!filteredStores.length) {
       return res.status(404).json({
         success: 0,
-        message: "No store available"
+        message: "No store available within 10 km",
       });
     }
 
-    // 🔥 RETURN MULTIPLE STORES
     res.json({
       success: 1,
-      data: filteredStores.slice(0, 5) // 🔥 important
+      data: filteredStores.slice(0, 5),
     });
-
   } catch (error) {
     res.status(500).json({
       success: 0,
-      message: error.message
+      message: error.message,
     });
   }
 };
