@@ -35,6 +35,7 @@ const storeSchema = new mongoose.Schema({
     },
     coordinates: {
       type: [Number], // [lng, lat]
+      index: "2dsphere"
     }
   },
 
@@ -162,5 +163,4 @@ const storeSchema = new mongoose.Schema({
   notes: String
 
 }, { timestamps: true });
-storeSchema.index({ location: "2dsphere" });
 export const Store= mongoose.model("Store", storeSchema);
