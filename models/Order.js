@@ -88,13 +88,25 @@ const orderSchema = new mongoose.Schema(
     ],
 
     addressInfo: {
-      addressId: String,
-      address: String,
-      city: String,
-      pincode: String,
-      phone: String,
-      notes: String,
+  addressId: String,
+  address: String,
+  city: String,
+  pincode: String,
+  phone: String,
+  notes: String,
+
+  // 🔥 ADD THIS
+  location: {
+    type: {
+      type: String,
+      default: "Point"
     },
+    coordinates: {
+      type: [Number], // [lng, lat]
+      default: [0, 0]
+    }
+  }
+},
 
     /* ✅ PAYMENT */
     paymentMethod: {

@@ -2,8 +2,19 @@ import { Address } from "../models/AddressModel.js";
 
 export const addAddress = async (req, res) => {
   try {
-    const { userId, address, city, pincode, phone, notes } = req.body;
-    console.log("UserId",userId)
+    const {
+      userId,
+      address,
+      city,
+      pincode,
+      phone,
+      notes,
+      latitude,
+      longitude,
+    } = req.body;
+
+    console.log("UserId", userId);
+
     if (!userId || !address || !city || !pincode || !phone) {
       return res.status(400).json({
         success: false,
@@ -11,13 +22,24 @@ export const addAddress = async (req, res) => {
       });
     }
 
+    // 🔥 Prepare location (GeoJSON format)
+    let locationData = {
+      type: "Point",
+      coordinates: [0, 0],
+    };
+
+    if (latitude && longitude) {
+      locationData.coordinates = [Number(longitude), Number(latitude)];
+    }
+
     const newlyCreatedAddress = new Address({
       userId,
       address,
       city,
       pincode,
-      notes,
       phone,
+      notes,
+      location: locationData, // ✅ added here
     });
 
     await newlyCreatedAddress.save();
@@ -34,7 +56,6 @@ export const addAddress = async (req, res) => {
     });
   }
 };
-
 export const fetchAllAddress = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -63,9 +84,9 @@ export const fetchAllAddress = async (req, res) => {
 export const editAddress = async (req, res) => {
   try {
     const { userId, addressId } = req.params;
-    console.log(userId)
-    console.log("AddressId",addressId)
-    const formData = req.body;
+    console.log(userId);
+    console.log("AddressId", addressId);
+
     if (!userId || !addressId) {
       return res.status(400).json({
         success: false,
@@ -73,16 +94,50 @@ export const editAddress = async (req, res) => {
       });
     }
 
-    const address = await Address.findOneAndUpdate(
+    const {
+      address,
+      city,
+      pincode,
+      phone,
+      notes,
+      latitude,
+      longitude,
+    } = req.body;
+
+    // 🔥 Prepare update object
+    const updateData = {
+      address,
+      city,
+      pincode,
+      phone,
+      notes,
+    };
+
+    // 🔥 Handle location update
+    if (latitude && longitude) {
+      updateData.location = {
+        type: "Point",
+        coordinates: [Number(longitude), Number(latitude)], // [lng, lat]
+      };
+    }
+
+    // ❗ Remove undefined fields (important)
+    Object.keys(updateData).forEach((key) => {
+      if (updateData[key] === undefined) {
+        delete updateData[key];
+      }
+    });
+
+    const addressData = await Address.findOneAndUpdate(
       {
         _id: addressId,
         userId,
       },
-      formData,
+      updateData,
       { new: true }
     );
 
-    if (!address) {
+    if (!addressData) {
       return res.status(404).json({
         success: false,
         message: "Address not found",
@@ -91,7 +146,7 @@ export const editAddress = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: address,
+      data: addressData,
     });
   } catch (e) {
     console.log(e);
