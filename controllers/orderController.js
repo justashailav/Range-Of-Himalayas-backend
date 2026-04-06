@@ -472,41 +472,49 @@ export const capturePayment = async (req, res) => {
     triggerEmail();
 
     const triggerWhatsApp = async () => {
-      try {
-        const user = await User.findById(order.userId);
+  try {
+    const phone = order?.addressInfo?.phone;
+    if (!phone) {
+      console.log("⚠️ No phone number, skipping WhatsApp");
+      return;
+    }
 
-        const phone = order?.addressInfo?.phone;
-        if (!phone) {
-          console.log("⚠️ No phone number, skipping WhatsApp");
-          return;
-        }
+    // ✨ PREMIUM ORDER CONFIRMATION
+    let message = `🏔️ *Order Confirmed!* \n`;
+    message += `_Thank you for choosing Range of Himalayas._\n\n`;
 
-        // 🧾 ORDER CONFIRMATION MESSAGE
-        let message = `🛍️ *Order Confirmed!*\n\n`;
-        message += `📦 Order ID: ${order._id}\n`;
-        message += `💰 Amount: ₹${order.totalAmount}\n`;
+    message += `*ORDER DETAILS*\n`;
+    message += `🆔 ID: #${order._id.toString().slice(-6).toUpperCase()}\n`;
+    message += `💰 Total: ₹${order.totalAmount}\n`;
 
-        // 💳 PAYMENT INFO
-        if (order.paymentMethod === "cod") {
-          message += `\n💳 Advance Paid: ₹${order.codAdvanceAmount || 200}`;
-          message += `\n💸 Remaining: ₹${order.codRemainingAmount || 0}`;
-        } else {
-          message += `\n💳 Payment: Paid`;
-        }
+    // 💳 PAYMENT STRUCTURE (Refined for Clarity)
+    if (order.paymentMethod === "cod") {
+      message += `\n*PAYMENT SUMMARY (COD)*\n`;
+      message += `✅ Advance Paid: ₹${order.codAdvanceAmount || 200}\n`;
+      message += `⏳ Balance to Pay: *₹${order.codRemainingAmount || 0}*\n`;
+    } else {
+      message += `\n✅ *Payment Status:* Full Payment Received\n`;
+    }
 
-        // 🚚 TRACK LINK
-        message += `\n\n📍 Track your order:\nhttps://www.rangeofhimalayas.co.in/order-tracking`;
+    // 📦 SHIPPING INFO
+    message += `\n*WHAT NEXT?*\n`;
+    message += `Our team is currently hand-picking your items. You will receive another update once your package leaves our Himalayan warehouse. 📦\n\n`;
 
-        // 📞 SUPPORT
-        message += `\n\n📞 Support: +91-6230867344`;
+    // 📍 QUICK LINKS
+    message += `📍 *Track Your Journey:* \nhttps://www.rangeofhimalayas.co.in/account/orders\n\n`;
 
-        await sendWhatsApp(phone, message);
+    // 📞 CONCIERGE SUPPORT
+    message += `_Need assistance? Reply to this message or call our concierge at +91 62308 67344._\n\n`;
+    
+    message += `🌿 *Pure. Organic. Himalayan.*`;
 
-        console.log("✅ WhatsApp sent");
-      } catch (err) {
-        console.error("❌ WhatsApp error (non-blocking):", err.message);
-      }
-    };
+    await sendWhatsApp(phone, message);
+    console.log("✅ Premium WhatsApp sent successfully");
+
+  } catch (err) {
+    console.error("❌ WhatsApp error (non-blocking):", err.message);
+  }
+};
 
     // Run in background (NON-BLOCKING)
     triggerWhatsApp();
@@ -903,6 +911,59 @@ export const updateOrderStatus = async (req, res) => {
       } catch (err) {
         console.error("🚨 Email error:", err.message);
       }
+    }
+
+
+    const phone = order?.addressInfo?.phone;
+    if (phone) {
+      const triggerWhatsAppUpdate = async () => {
+        try {
+          const shortId = order._id.toString().slice(-6).toUpperCase();
+          let statusEmoji = "📦";
+          let statusText = order.orderStatus.replace(/_/g, " ").toUpperCase();
+          let subMessage = "Our team is working on your request.";
+
+          // Customize based on status
+          switch (order.orderStatus.toLowerCase()) {
+            case "packed":
+              statusEmoji = "🎁";
+              subMessage = "Your items have been carefully packed and are ready for the journey.";
+              break;
+            case "shipped":
+              statusEmoji = "🚚";
+              subMessage = "Your package has left our Himalayan warehouse. It's on its way to you!";
+              break;
+            case "out_for_delivery":
+              statusEmoji = "🚀";
+              subMessage = "The wait is almost over! Our delivery partner is nearby.";
+              break;
+            case "delivered":
+              statusEmoji = "🏡";
+              subMessage = "Successfully delivered. We hope you enjoy your Himalayan treasures!";
+              break;
+            case "cancelled":
+              statusEmoji = "❌";
+              subMessage = "Your order has been cancelled. Contact support for any queries.";
+              break;
+          }
+
+          let waMsg = `${statusEmoji} *Order Update: ${statusText}*\n`;
+          waMsg += `_Range of Himalayas_\n\n`;
+          waMsg += `Hello *${user.name || "there"}*,\n`;
+          waMsg += `${subMessage}\n\n`;
+          waMsg += `🆔 *Order:* #${shortId}\n`;
+          waMsg += `📍 *Track Status:* https://www.rangeofhimalayas.co.in/account/orders\n\n`;
+          waMsg += `🌿 *Pure. Organic. Himalayan.*`;
+
+          await sendWhatsApp(phone, waMsg);
+          console.log("✅ WhatsApp status update sent");
+        } catch (waErr) {
+          console.error("🚨 WhatsApp Notify Error:", waErr.message);
+        }
+      };
+
+      // Run as non-blocking
+      triggerWhatsAppUpdate();
     }
 
     // ====================================================
