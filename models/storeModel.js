@@ -35,7 +35,6 @@ const storeSchema = new mongoose.Schema({
     },
     coordinates: {
       type: [Number], // [lng, lat]
-      index: "2dsphere"
     }
   },
 
