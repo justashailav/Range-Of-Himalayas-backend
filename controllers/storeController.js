@@ -158,7 +158,7 @@ export const findNearestStore = async (req, res) => {
 
     let filteredStores = stores;
 
-    // 🔥 FILTER BASED ON ORDER TYPE
+    // 🚚 DELIVERY FILTER
     if (orderType === "delivery") {
       filteredStores = stores.filter(
         (s) =>
@@ -167,6 +167,7 @@ export const findNearestStore = async (req, res) => {
       );
     }
 
+    // 🏬 PICKUP FILTER
     if (orderType === "pickup") {
       filteredStores = stores.filter(
         (s) => s.services?.pickup?.enabled === 1
@@ -180,9 +181,10 @@ export const findNearestStore = async (req, res) => {
       });
     }
 
+    // 🔥 RETURN MULTIPLE STORES
     res.json({
       success: 1,
-      data: filteredStores[0] // best store
+      data: filteredStores.slice(0, 5) // 🔥 important
     });
 
   } catch (error) {
