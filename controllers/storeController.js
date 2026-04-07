@@ -1,47 +1,48 @@
 import { Store } from "../models/storeModel.js";
-import bcrypt from "bcryptjs";
 import { User } from "../models/userModel.js";
-
-
 export const createStore = async (req, res) => {
   try {
-    const {
-      name,
-      address,
-      managerName,
-      managerEmail,
-      managerPassword,
-      managerPhone
-    } = req.body;
+    const { manager, location, ...storeData } = req.body;
+
+    // ✅ HARD FIX (always ensure coordinates exist)
+    const safeLocation = {
+      type: "Point",
+      coordinates:
+        location?.coordinates?.length === 2
+          ? location.coordinates
+          : [77.1734, 31.1048], // fallback (Shimla)
+    };
 
     // ✅ 1. Create Store
     const store = await Store.create({
-      name,
-      address,
+      ...storeData,
+      location: safeLocation,
     });
 
-    // ✅ 2. Hash password
-    const hashedPassword = await bcrypt.hash(managerPassword, 10);
+    let managerUser = null;
 
-    // ✅ 3. Create Manager
-    const manager = await User.create({
-      name: managerName,
-      email: managerEmail,
-      phone: managerPhone,
-      password: hashedPassword,
-      role: "Manager",
-      storeId: store._id,
-      accountVerified: true,
-    });
+    // ✅ 2. Create Manager
+    if (manager?.email && manager?.password) {
+      const hashedPassword = await bcrypt.hash(manager.password, 10);
 
-    // ✅ 4. Link manager to store
-    store.managerId = manager._id;
-    await store.save();
+      managerUser = await User.create({
+        name: manager.name,
+        email: manager.email,
+        phone: manager.phone,
+        password: hashedPassword,
+        role: "Manager",
+        storeId: store._id,
+        accountVerified: true,
+      });
+
+      store.managerId = managerUser._id;
+      await store.save();
+    }
 
     res.status(201).json({
       success: 1,
       message: "Store + Manager created successfully",
-      data: { store, manager },
+      data: { store, manager: managerUser },
     });
 
   } catch (error) {
@@ -51,6 +52,8 @@ export const createStore = async (req, res) => {
     });
   }
 };
+
+
 // ✅ 2. GET ALL STORES
 export const getAllStores = async (req, res) => {
   try {
