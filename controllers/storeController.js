@@ -1,22 +1,56 @@
 import { Store } from "../models/storeModel.js";
+import bcrypt from "bcryptjs";
+import { User } from "../models/userModel.js";
+import { Store } from "../models/storeModel.js";
+
 export const createStore = async (req, res) => {
   try {
-    const store = await Store.create(req.body);
+    const {
+      name,
+      address,
+      managerName,
+      managerEmail,
+      managerPassword,
+      managerPhone
+    } = req.body;
+
+    // ✅ 1. Create Store
+    const store = await Store.create({
+      name,
+      address,
+    });
+
+    // ✅ 2. Hash password
+    const hashedPassword = await bcrypt.hash(managerPassword, 10);
+
+    // ✅ 3. Create Manager
+    const manager = await User.create({
+      name: managerName,
+      email: managerEmail,
+      phone: managerPhone,
+      password: hashedPassword,
+      role: "Manager",
+      storeId: store._id,
+      accountVerified: true,
+    });
+
+    // ✅ 4. Link manager to store
+    store.managerId = manager._id;
+    await store.save();
 
     res.status(201).json({
       success: 1,
-      message: "Store created successfully",
-      data: store
+      message: "Store + Manager created successfully",
+      data: { store, manager },
     });
+
   } catch (error) {
     res.status(500).json({
       success: 0,
-      message: error.message
+      message: error.message,
     });
   }
 };
-
-
 // ✅ 2. GET ALL STORES
 export const getAllStores = async (req, res) => {
   try {

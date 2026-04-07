@@ -22,8 +22,13 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["Admin", "User"],
+      enum: ["Admin", "Manager", "User"],
       default: "User",
+    },
+    storeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Store",
+      default: null,
     },
     accountVerified: {
       type: Boolean,

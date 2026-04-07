@@ -44,7 +44,7 @@ const storeSchema = new mongoose.Schema({
   whatsapp: String,
   email: String,
 
-  // 🧑‍💼 Manager & Staff
+
   managerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "User"
