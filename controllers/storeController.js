@@ -21,9 +21,10 @@ export const createStore = async (req, res) => {
     });
 
     let managerUser = null;
-
+    console.log("Incoming manager:", manager);
     // ✅ 2. Create Manager
     if (manager?.email && manager?.password) {
+      console.log("✅ Creating manager...");
       const hashedPassword = await bcrypt.hash(manager.password, 10);
 
       managerUser = await User.create({
@@ -38,6 +39,7 @@ export const createStore = async (req, res) => {
 
       store.managerId = managerUser._id;
       await store.save();
+      console.log("✅ Manager linked:", managerUser._id);
     }
 
     res.status(201).json({
