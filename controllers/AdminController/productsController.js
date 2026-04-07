@@ -16,6 +16,9 @@ export const addProduct = async (req, res) => {
       customBoxPrices,
       isCombo,
       comboNutrition,
+      storeId,
+      sku,
+      status,
     } = req.body;
 
     const files = req.files || [];
@@ -76,7 +79,7 @@ export const addProduct = async (req, res) => {
       "10g (Himalayan Shilajit) 500ml (Sea Buckthorn Pulp)",
       "10g (Himalayan Shilajit) 200ml (Sea Buckthorn Pulp)",
       "20g (Himalayan Shilajit) 200ml (Sea Buckthorn Pulp)",
-      "20g (Himalayan Shilajit) 500ml (Sea Buckthorn Pulp)"
+      "20g (Himalayan Shilajit) 500ml (Sea Buckthorn Pulp)",
     ];
 
     const normalizedVariants = parsedVariants

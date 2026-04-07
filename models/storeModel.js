@@ -163,4 +163,5 @@ const storeSchema = new mongoose.Schema({
   notes: String
 
 }, { timestamps: true });
+
 export const Store= mongoose.model("Store", storeSchema);
