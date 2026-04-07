@@ -1,23 +1,29 @@
 import { Coupon } from "../../models/AdminModel/couponModal.js";
 import { Order } from "../../models/Order.js";
+import { User } from "../../models/userModel.js";
 
 export const applyCoupon = async (req, res) => {
   try {
-    
     const { code, orderAmount, userId } = req.body;
 
     const coupon = await Coupon.findOne({ code: code.trim().toUpperCase() });
 
     if (!coupon) {
-      return res.status(404).json({ success: false, message: "Invalid coupon code" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Invalid coupon code" });
     }
 
     if (!coupon.isActive) {
-      return res.status(400).json({ success: false, message: "Coupon is inactive" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Coupon is inactive" });
     }
 
     if (new Date() > new Date(coupon.expiresAt)) {
-      return res.status(400).json({ success: false, message: "Coupon has expired" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Coupon has expired" });
     }
 
     if (orderAmount < coupon.minOrderAmount) {
@@ -27,7 +33,10 @@ export const applyCoupon = async (req, res) => {
       });
     }
     if (coupon.maxUniqueUsers && coupon.maxUniqueUsers > 0) {
-      const uniqueUsers = await Order.distinct("userId", { code: coupon._id,paymentStatus: "paid", });
+      const uniqueUsers = await Order.distinct("userId", {
+        code: coupon._id,
+        paymentStatus: "paid",
+      });
       if (
         uniqueUsers.length >= coupon.maxUniqueUsers &&
         !uniqueUsers.includes(userId)
@@ -47,7 +56,8 @@ export const applyCoupon = async (req, res) => {
     if (userUsedCount >= coupon.usageLimit) {
       return res.status(400).json({
         success: false,
-        message: "You have already used this coupon the maximum number of times",
+        message:
+          "You have already used this coupon the maximum number of times",
       });
     }
     let discountAmount =
@@ -139,7 +149,7 @@ export const createCoupon = async (req, res) => {
       expiresAt,
       maxUniqueUsers: maxUniqueUsers || 0,
     });
-   sendCouponToAllUsers(coupon);
+    sendCouponToAllUsers(coupon);
 
     return res.status(201).json({
       success: true,
@@ -202,10 +212,14 @@ export const editCoupon = async (req, res) => {
       }
     }
 
-    existingCoupon.code = code ? code.toUpperCase().trim() : existingCoupon.code;
+    existingCoupon.code = code
+      ? code.toUpperCase().trim()
+      : existingCoupon.code;
     existingCoupon.discountType = discountType ?? existingCoupon.discountType;
-    existingCoupon.discountValue = discountValue ?? existingCoupon.discountValue;
-    existingCoupon.minOrderAmount = minOrderAmount ?? existingCoupon.minOrderAmount;
+    existingCoupon.discountValue =
+      discountValue ?? existingCoupon.discountValue;
+    existingCoupon.minOrderAmount =
+      minOrderAmount ?? existingCoupon.minOrderAmount;
     existingCoupon.usageLimit = usageLimit ?? existingCoupon.usageLimit;
     existingCoupon.expiresAt = expiresAt ?? existingCoupon.expiresAt;
     if (typeof isActive === "boolean") {
@@ -214,7 +228,13 @@ export const editCoupon = async (req, res) => {
 
     await existingCoupon.save();
 
-    return res.status(200).json({ success: true, coupon: existingCoupon, message: "Coupon updated successfully." });
+    return res
+      .status(200)
+      .json({
+        success: true,
+        coupon: existingCoupon,
+        message: "Coupon updated successfully.",
+      });
   } catch (error) {
     console.error("Error editing coupon:", error);
     return res.status(500).json({ message: "Server error. Try again later." });
