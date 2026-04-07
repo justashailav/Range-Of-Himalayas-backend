@@ -5,8 +5,21 @@ import { StoreProduct } from "../models/storeProductsModel.js";
 /* ---------------- ADD STORE PRODUCT ---------------- */
 export const addStoreProduct = async (req, res) => {
   try {
-    const { title, description, storeId, variants, category } = req.body;
+    const {
+      title,
+      displayName,
+      description,
+      storeId,
+      variants,
+      category,
+      image,
+      searchKeywords,
+      lowStockThreshold,
+      status,
+      isAvailable
+    } = req.body;
 
+    // ✅ Validation
     if (!title || !storeId) {
       return res.status(400).json({
         success: false,
@@ -14,6 +27,7 @@ export const addStoreProduct = async (req, res) => {
       });
     }
 
+    // ✅ Parse variants safely
     const parsedVariants =
       typeof variants === "string" ? JSON.parse(variants) : variants;
 
@@ -28,23 +42,54 @@ export const addStoreProduct = async (req, res) => {
       costPrice: Number(v.costPrice) || 0,
     }));
 
+    // ✅ Generate initial stock logs (optional but powerful)
+    const stockLogs = [];
+    normalizedVariants.forEach((v) => {
+      if (v.stock > 0) {
+        stockLogs.push({
+          type: "restock",
+          quantity: v.stock,
+          note: "Initial stock added",
+        });
+      }
+    });
+
+    // ✅ Normalize keywords
+    const keywordsArray =
+      typeof searchKeywords === "string"
+        ? searchKeywords.split(",").map((k) => k.trim().toLowerCase())
+        : searchKeywords || [];
+
+    // ✅ Create product
     const product = new StoreProduct({
       title,
-      description,
+      displayName: displayName || "",
+      description: description || "",
       storeId,
-      category,
+      category: category || "",
+      image: image || "",
+      searchKeywords: keywordsArray,
       variants: normalizedVariants,
+      stockLogs,
+      lowStockThreshold: lowStockThreshold || 5,
+      status: status || "active",
+      isAvailable: isAvailable !== undefined ? isAvailable : true,
     });
 
     await product.save();
 
     res.status(201).json({
       success: true,
+      message: "Store product created successfully",
       product,
     });
 
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("❌ Add Store Product Error:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 };
 

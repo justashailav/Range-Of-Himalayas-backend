@@ -918,7 +918,6 @@ export const updateOrderStatus = async (req, res) => {
     if (phone) {
       const triggerWhatsAppUpdate = async () => {
         try {
-          const shortId = order._id.toString().slice(-6).toUpperCase();
           let statusEmoji = "📦";
           let statusText = order.orderStatus.replace(/_/g, " ").toUpperCase();
           let subMessage = "Our team is working on your request.";
@@ -951,7 +950,7 @@ export const updateOrderStatus = async (req, res) => {
           waMsg += `_Range of Himalayas_\n\n`;
           waMsg += `Hello *${user.name || "there"}*,\n`;
           waMsg += `${subMessage}\n\n`;
-          waMsg += `🆔 *Order:* #${shortId}\n`;
+          waMsg += `🆔 *Order:* #${order._id}\n`;
           waMsg += `📍 *Track Status:* https://www.rangeofhimalayas.co.in/account/orders\n\n`;
           waMsg += `🌿 *Pure. Organic. Himalayan.*`;
 

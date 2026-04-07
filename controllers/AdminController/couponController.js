@@ -72,7 +72,46 @@ export const applyCoupon = async (req, res) => {
     });
   }
 };
+const sendCouponToAllUsers = async (coupon) => {
+  try {
+    const users = await User.find({
+      phone: { $exists: true, $ne: "" },
+    });
 
+    console.log(`📢 Sending coupon to ${users.length} users`);
+
+    for (let i = 0; i < users.length; i++) {
+      const user = users[i];
+
+      // ✅ Skip if user opted out (important)
+      if (user.marketingOptIn === false) continue;
+
+      const msg = `🎁 *Exclusive Offer Just for You!*\n\n
+Hi ${user.name || "there"} 👋\n
+Enjoy *${coupon.discountValue}${
+        coupon.discountType === "percentage" ? "%" : "₹"
+      } OFF* on your next order 🎉\n\n
+💸 Code: *${coupon.code}*\n
+🛒 Shop Now:\nhttps://www.rangeofhimalayas.co.in\n\n
+🌿 Pure. Organic. Himalayan.`;
+
+      try {
+        await sendWhatsApp(user.phone, msg);
+
+        console.log(`✅ Sent to ${user.phone}`);
+
+        // ⏳ VERY IMPORTANT (avoid WhatsApp ban)
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      } catch (err) {
+        console.error(`❌ Failed for ${user.phone}`, err.message);
+      }
+    }
+
+    console.log("🚀 All users notified");
+  } catch (error) {
+    console.error("❌ Bulk send error:", error.message);
+  }
+};
 export const createCoupon = async (req, res) => {
   try {
     const {
@@ -100,6 +139,7 @@ export const createCoupon = async (req, res) => {
       expiresAt,
       maxUniqueUsers: maxUniqueUsers || 0,
     });
+   sendCouponToAllUsers(coupon);
 
     return res.status(201).json({
       success: true,

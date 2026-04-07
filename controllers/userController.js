@@ -9,8 +9,8 @@ import { uploadMedia } from "../config/cloudinary.js";
 import jwt from "jsonwebtoken";
 export const Register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
-    if (!name || !email || !password) {
+    const { name, email, password,phone } = req.body;
+    if (!name || !email || !password || !phone) {
       return res.status(400).json({
         success: false,
         message: "All fields required",
@@ -44,6 +44,7 @@ export const Register = async (req, res) => {
     const newUser = await User.create({
       name,
       email,
+      phone,
       password: hasshedPassword,
     });
     const verificationCode = await newUser.generateVerificatinCode();
