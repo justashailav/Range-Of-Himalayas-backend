@@ -5,13 +5,13 @@ export const createStore = async (req, res) => {
   try {
     const { manager, location, ...storeData } = req.body;
 
-    // ✅ HARD FIX (always ensure coordinates exist)
+    // ✅ Safe location
     const safeLocation = {
       type: "Point",
       coordinates:
         location?.coordinates?.length === 2
           ? location.coordinates
-          : [77.1734, 31.1048], // fallback (Shimla)
+          : [77.1734, 31.1048],
     };
 
     // ✅ 1. Create Store
@@ -21,25 +21,50 @@ export const createStore = async (req, res) => {
     });
 
     let managerUser = null;
+
     console.log("Incoming manager:", manager);
-    // ✅ 2. Create Manager
+
+    // ✅ 2. Handle Manager
     if (manager?.email && manager?.password) {
-      console.log("✅ Creating manager...");
-      const hashedPassword = await bcrypt.hash(manager.password, 10);
+      console.log("🔍 Checking existing user...");
 
-      managerUser = await User.create({
-        name: manager.name,
-        email: manager.email,
-        phone: manager.phone,
-        password: hashedPassword,
-        role: "Manager",
-        storeId: store._id,
-        accountVerified: true,
-      });
+      // 🔥 Check if user already exists
+      managerUser = await User.findOne({ email: manager.email });
 
+      if (managerUser) {
+        console.log("✅ Existing user found → upgrading to Manager");
+
+        managerUser.role = "Manager";
+        managerUser.storeId = store._id;
+
+        // Optional: update name/phone if needed
+        managerUser.name = manager.name || managerUser.name;
+        managerUser.phone = manager.phone || managerUser.phone;
+
+        await managerUser.save();
+      } else {
+        console.log("🆕 Creating new manager");
+
+        const hashedPassword = await bcrypt.hash(manager.password, 10);
+
+        managerUser = await User.create({
+          name: manager.name,
+          email: manager.email,
+          phone: manager.phone,
+          password: hashedPassword,
+          role: "Manager",
+          storeId: store._id,
+          accountVerified: true,
+        });
+      }
+
+      // ✅ 3. Link manager to store (ALWAYS)
       store.managerId = managerUser._id;
       await store.save();
+
       console.log("✅ Manager linked:", managerUser._id);
+    } else {
+      console.log("⚠️ Manager data missing → skipping");
     }
 
     res.status(201).json({
@@ -49,13 +74,13 @@ export const createStore = async (req, res) => {
     });
 
   } catch (error) {
+    console.error("❌ ERROR:", error);
     res.status(500).json({
       success: 0,
       message: error.message,
     });
   }
 };
-
 
 // ✅ 2. GET ALL STORES
 export const getAllStores = async (req, res) => {
