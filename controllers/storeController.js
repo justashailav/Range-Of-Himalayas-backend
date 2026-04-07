@@ -1,5 +1,6 @@
 import { Store } from "../models/storeModel.js";
 import { User } from "../models/userModel.js";
+import bcrypt from "bcryptjs";
 export const createStore = async (req, res) => {
   try {
     const { manager, location, ...storeData } = req.body;
