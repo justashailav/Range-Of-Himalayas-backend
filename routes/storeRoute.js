@@ -1,6 +1,10 @@
+import express from "express";
+import { createStore, deleteStore, findNearestStore, getAllStores, getMyStore, getStoreById, getStoresByManager, toggleStoreStatus, updateStore } from "../controllers/storeController.js";
+import { attachStore, isAuthenticated } from "../middleware/authmiddleware.js";
+
+
 const router = express.Router();
 
-// ✅ CREATE
 router.post("/create-store", createStore);
 
 // ✅ GET
