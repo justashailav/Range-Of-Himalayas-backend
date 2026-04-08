@@ -1,5 +1,5 @@
 import express from "express";
-import { createStore, deleteStore, findNearestStore, getAllStores, getMyStore, getStoreById, getStoresByManager, toggleStoreStatus, updateStore } from "../controllers/storeController.js";
+import { createStore, deleteStore, findNearestStore, getAllStores, getMyStore, getStoreById,toggleStoreStatus, updateStore } from "../controllers/storeController.js";
 import { attachStore, isAuthenticated } from "../middleware/authmiddleware.js";
 
 
