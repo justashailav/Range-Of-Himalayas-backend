@@ -32,3 +32,6 @@ router.delete("/manager/delete/:id", deleteStoreProduct);
 router.use("/admin", isAuthenticated, isAuthorized("Admin"));
 
 router.get("/admin/products", getStoreProducts); // 👀 view only
+
+
+export default router
