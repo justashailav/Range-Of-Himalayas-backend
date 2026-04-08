@@ -1,37 +1,9 @@
-// import jwt from "jsonwebtoken";
-// import { User } from "../models/userModel.js";
-// export const isAuthenticated = async (req, res, next) => {
-//   const { token } = req.cookies;
-//   if (!token) {
-//     return res.status(400).json({
-//       success: false,
-//       message: "User not authenciated",
-//     });
-//   }
-//   const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-//   console.log(decoded);
-//   req.user = await User.findById(decoded.id);
-//   next();
-// };
-
-// export const isAuthorized = (...roles) => {
-//   return (req, re, next) => {
-//     if (!roles.includes(req.user.role)) {
-//       return next({
-//         status: 403,
-//         message: "You are not authorized to access this resource.",
-//       });
-//     }
-//     next()
-//   };
-// };
 import jwt from "jsonwebtoken";
 import { User } from "../models/userModel.js";
 
 export const isAuthenticated = async (req, res, next) => {
   try {
     const { token } = req.cookies;
-    console.log("🍪 [Auth Debug] Cookies:", req.cookies);
 
     if (!token) {
       console.log("🚫 No token found");
@@ -42,8 +14,6 @@ export const isAuthenticated = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-    console.log("✅ Token verified:", decoded);
-
     // Admin login (special static case)
     if (decoded.id === "admin-id" || decoded.role === "Admin") {
       req.user = {
@@ -87,4 +57,38 @@ export const isAuthorized = (...roles) => {
     }
     next();
   };
+};
+
+export const attachStore = (req, res, next) => {
+  try {
+    // 👑 Admin → can access everything
+    if (req.user.role === "Admin") {
+      return next();
+    }
+
+    // 🏬 Manager → attach storeId
+    if (req.user.role === "Manager") {
+      if (!req.user.storeId) {
+        return res.status(400).json({
+          success: false,
+          message: "Manager not assigned to any store",
+        });
+      }
+
+      req.storeId = req.user.storeId;
+      return next();
+    }
+
+    // 👤 Normal user → no store access
+    return res.status(403).json({
+      success: false,
+      message: "Only managers can access store data",
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
 };

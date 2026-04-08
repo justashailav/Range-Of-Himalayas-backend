@@ -1,15 +1,29 @@
+import { Products } from "../models/AdminModel/productsModel.js";
 import { StoreProduct } from "../models/storeProductsModel.js";
 
 
+/* ---------------- HELPER ---------------- */
+const getStoreId = (req) => {
+  if (req.user.role === "Admin") {
+    return req.query.storeId; // admin only reads
+  }
+  return req.storeId; // manager
+};
 
-/* ---------------- ADD STORE PRODUCT ---------------- */
+/* ---------------- ADD PRODUCT (MANAGER ONLY) ---------------- */
 export const addStoreProduct = async (req, res) => {
   try {
+    if (req.user.role !== "Manager") {
+      return res.status(403).json({
+        success: false,
+        message: "Only manager can add products",
+      });
+    }
+
     const {
       title,
       displayName,
       description,
-      storeId,
       variants,
       category,
       image,
@@ -19,15 +33,15 @@ export const addStoreProduct = async (req, res) => {
       isAvailable
     } = req.body;
 
-    // ✅ Validation
-    if (!title || !storeId) {
+    const storeId = req.storeId;
+
+    if (!title) {
       return res.status(400).json({
         success: false,
-        message: "Title and storeId required",
+        message: "Title required",
       });
     }
 
-    // ✅ Parse variants safely
     const parsedVariants =
       typeof variants === "string" ? JSON.parse(variants) : variants;
 
@@ -42,26 +56,20 @@ export const addStoreProduct = async (req, res) => {
       costPrice: Number(v.costPrice) || 0,
     }));
 
-    // ✅ Generate initial stock logs (optional but powerful)
-    const stockLogs = [];
-    normalizedVariants.forEach((v) => {
-      if (v.stock > 0) {
-        stockLogs.push({
-          type: "restock",
-          quantity: v.stock,
-          note: "Initial stock added",
-        });
-      }
-    });
+    const stockLogs = normalizedVariants
+      .filter((v) => v.stock > 0)
+      .map((v) => ({
+        type: "restock",
+        quantity: v.stock,
+        note: "Initial stock added",
+      }));
 
-    // ✅ Normalize keywords
     const keywordsArray =
       typeof searchKeywords === "string"
         ? searchKeywords.split(",").map((k) => k.trim().toLowerCase())
         : searchKeywords || [];
 
-    // ✅ Create product
-    const product = new StoreProduct({
+    const product = await StoreProduct.create({
       title,
       displayName: displayName || "",
       description: description || "",
@@ -76,58 +84,52 @@ export const addStoreProduct = async (req, res) => {
       isAvailable: isAvailable !== undefined ? isAvailable : true,
     });
 
-    await product.save();
-
     res.status(201).json({
       success: true,
-      message: "Store product created successfully",
+      message: "Product added",
       product,
-    });
-
-  } catch (err) {
-    console.error("❌ Add Store Product Error:", err);
-    res.status(500).json({
-      success: false,
-      message: err.message,
-    });
-  }
-};
-
-export const getStoreProducts = async (req, res) => {
-  try {
-    const { storeId } = req.query;
-
-    const filter = { isDeleted: false };
-
-    if (storeId) filter.storeId = storeId;
-
-    const products = await StoreProduct.find(filter).sort({ createdAt: -1 });
-
-    res.json({
-      success: true,
-      products,
     });
 
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
+
+/* ---------------- GET PRODUCTS (ADMIN + MANAGER) ---------------- */
+export const getStoreProducts = async (req, res) => {
+  try {
+    const storeId = getStoreId(req);
+
+    const filter = { isDeleted: false };
+    if (storeId) filter.storeId = storeId;
+
+    const products = await StoreProduct.find(filter).sort({ createdAt: -1 });
+
+    res.json({ success: true, products });
+
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+/* ---------------- COPY PRODUCT (MANAGER ONLY) ---------------- */
 export const copyToStore = async (req, res) => {
   try {
-    const { productId, storeId } = req.body;
-
-    const product = await Products.findById(productId);
-
-    if (!product) {
-      return res.status(404).json({ message: "Product not found" });
+    if (req.user.role !== "Manager") {
+      return res.status(403).json({ message: "Not allowed" });
     }
 
-    const newProduct = new StoreProduct({
+    const { productId } = req.body;
+    const storeId = req.storeId;
+
+    const product = await Products.findById(productId);
+    if (!product) return res.status(404).json({ message: "Product not found" });
+
+    const newProduct = await StoreProduct.create({
       title: product.title,
       description: product.description,
       image: product.image,
       storeId,
-
       variants: product.variants.map((v) => ({
         size: v.size,
         weight: v.weight,
@@ -139,38 +141,30 @@ export const copyToStore = async (req, res) => {
       })),
     });
 
-    await newProduct.save();
-
-    res.json({
-      success: true,
-      message: "Product copied to store",
-      product: newProduct,
-    });
+    res.json({ success: true, product: newProduct });
 
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
+
+/* ---------------- SELL (MANAGER ONLY) ---------------- */
 export const sellStoreProduct = async (req, res) => {
   try {
-    const { sku, quantity } = req.body;
-
-    if (!sku || !quantity) {
-      return res.status(400).json({
-        success: false,
-        message: "SKU and quantity required",
-      });
+    if (req.user.role !== "Manager") {
+      return res.status(403).json({ message: "Not allowed" });
     }
 
+    const { sku, quantity } = req.body;
+
     const product = await StoreProduct.findOne({
+      storeId: req.storeId,
       "variants.sku": sku,
     });
 
-    if (!product) {
-      return res.status(404).json({ message: "Product not found" });
-    }
+    if (!product) return res.status(404).json({ message: "Product not found" });
 
-    const variant = product.variants.find(v => v.sku === sku);
+    const variant = product.variants.find((v) => v.sku === sku);
 
     if (!variant || variant.stock < quantity) {
       return res.status(400).json({ message: "Out of stock" });
@@ -178,23 +172,17 @@ export const sellStoreProduct = async (req, res) => {
 
     const sellingPrice = variant.salesPrice || variant.price;
 
-    await StoreProduct.updateOne(
-      { "variants.sku": sku },
-      {
-        $inc: {
-          "variants.$.stock": -quantity,
-          totalStock: -quantity,
-          sold: quantity,
-        },
-        $push: {
-          stockLogs: {
-            type: "sale",
-            quantity,
-            note: "Sold from store",
-          },
-        },
-      }
-    );
+    variant.stock -= quantity;
+    product.totalStock -= quantity;
+    product.sold += quantity;
+
+    product.stockLogs.push({
+      type: "sale",
+      quantity,
+      note: "Sold by manager",
+    });
+
+    await product.save();
 
     res.json({
       success: true,
@@ -205,26 +193,35 @@ export const sellStoreProduct = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+/* ---------------- RESTOCK (MANAGER ONLY) ---------------- */
 export const restockProduct = async (req, res) => {
   try {
+    if (req.user.role !== "Manager") {
+      return res.status(403).json({ message: "Not allowed" });
+    }
+
     const { sku, quantity } = req.body;
 
-    await StoreProduct.updateOne(
-      { "variants.sku": sku },
-      {
-        $inc: {
-          "variants.$.stock": quantity,
-          totalStock: quantity,
-        },
-        $push: {
-          stockLogs: {
-            type: "restock",
-            quantity,
-            note: "Manual restock",
-          },
-        },
-      }
-    );
+    const product = await StoreProduct.findOne({
+      storeId: req.storeId,
+      "variants.sku": sku,
+    });
+
+    if (!product) return res.status(404).json({ message: "Product not found" });
+
+    const variant = product.variants.find((v) => v.sku === sku);
+
+    variant.stock += quantity;
+    product.totalStock += quantity;
+
+    product.stockLogs.push({
+      type: "restock",
+      quantity,
+      note: "Manager restock",
+    });
+
+    await product.save();
 
     res.json({
       success: true,
@@ -235,32 +232,42 @@ export const restockProduct = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+
+/* ---------------- EDIT (MANAGER ONLY) ---------------- */
 export const editStoreProduct = async (req, res) => {
   try {
+    if (req.user.role !== "Manager") {
+      return res.status(403).json({ message: "Not allowed" });
+    }
+
     const { id } = req.params;
 
-    const product = await StoreProduct.findByIdAndUpdate(
-      id,
+    const product = await StoreProduct.findOneAndUpdate(
+      { _id: id, storeId: req.storeId },
       req.body,
       { new: true }
     );
 
-    res.json({
-      success: true,
-      product,
-    });
+    res.json({ success: true, product });
 
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
+
+/* ---------------- DELETE (MANAGER ONLY) ---------------- */
 export const deleteStoreProduct = async (req, res) => {
   try {
+    if (req.user.role !== "Manager") {
+      return res.status(403).json({ message: "Not allowed" });
+    }
+
     const { id } = req.params;
 
-    await StoreProduct.findByIdAndUpdate(id, {
-      isDeleted: true,
-    });
+    await StoreProduct.findOneAndUpdate(
+      { _id: id, storeId: req.storeId },
+      { isDeleted: true }
+    );
 
     res.json({
       success: true,

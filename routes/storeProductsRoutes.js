@@ -1,13 +1,34 @@
 import express from "express";
-import { addStoreProduct, copyToStore, deleteStoreProduct, editStoreProduct, getStoreProducts, restockProduct, sellStoreProduct } from "../controllers/storeProductsController.js";
+import {
+  addStoreProduct,
+  copyToStore,
+  deleteStoreProduct,
+  editStoreProduct,
+  getStoreProducts,
+  restockProduct,
+  sellStoreProduct
+} from "../controllers/storeProductsController.js";
+
+import {
+  attachStore,
+  isAuthenticated,
+  isAuthorized
+} from "../middleware/authmiddleware.js";
+
 const router = express.Router();
-router.post("/add", addStoreProduct);
-router.get("/products", getStoreProducts);
-router.post("/copy", copyToStore);
-router.post("/sell", sellStoreProduct);
-router.post("/restock", restockProduct);
-router.put("/edit/:id", editStoreProduct);
-router.delete("/delete/:id", deleteStoreProduct);
 
+/* ---------------- MANAGER ROUTES ---------------- */
+router.use("/manager", isAuthenticated, isAuthorized("Manager"), attachStore);
 
-export default router;
+router.post("/manager/add", addStoreProduct);
+router.get("/manager/products", getStoreProducts);
+router.post("/manager/copy", copyToStore);
+router.post("/manager/sell", sellStoreProduct);
+router.post("/manager/restock", restockProduct);
+router.put("/manager/edit/:id", editStoreProduct);
+router.delete("/manager/delete/:id", deleteStoreProduct);
+
+/* ---------------- ADMIN ROUTES ---------------- */
+router.use("/admin", isAuthenticated, isAuthorized("Admin"));
+
+router.get("/admin/products", getStoreProducts); // 👀 view only
