@@ -285,21 +285,26 @@ export const toggleStoreStatus = async (req, res) => {
     });
   }
 };
-export const getStoresByManager = async (req, res) => {
+export const getMyStore = async (req, res) => {
   try {
-    const { managerId } = req.params;
+    const store = await Store.findById(req.user.storeId)
+      .populate("managerId", "name email");
 
-    const stores = await Store.find({ managerId });
+    if (!store) {
+      return res.status(404).json({
+        success: 0,
+        message: "No store assigned",
+      });
+    }
 
     res.json({
       success: 1,
-      data: stores
+      data: store,
     });
-
   } catch (error) {
     res.status(500).json({
       success: 0,
-      message: error.message
+      message: error.message,
     });
   }
 };
