@@ -132,8 +132,9 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 export const Login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log("🧠 Login attempt:", email, password);
 
+    console.log("🧠 Login attempt:", email);
+    
     if (!email || !password) {
       return res.status(400).json({
         success: false,
@@ -141,9 +142,13 @@ export const Login = async (req, res) => {
       });
     }
 
-    // ✅ ADMIN LOGIN
-    if (email === ADMIN_EMAIL) {
-      const isPasswordMatch = await bcrypt.compare(password, ADMIN_PASSWORD);
+    /* ---------------- ADMIN LOGIN ---------------- */
+    if (email === process.env.ADMIN_EMAIL) {
+      const isPasswordMatch = await bcrypt.compare(
+        password,
+        process.env.ADMIN_PASSWORD
+      );
+
       if (!isPasswordMatch) {
         return res.status(400).json({
           success: false,
@@ -151,12 +156,13 @@ export const Login = async (req, res) => {
         });
       }
 
-      // 🔑 Admin token uses same secret as users for consistency
       const token = jwt.sign(
         { id: "admin-id", role: "Admin" },
-        process.env.JWT_SECRET_KEY, // ✅ unified key
+        process.env.JWT_SECRET_KEY,
         { expiresIn: process.env.JWT_EXPIRE }
       );
+
+      console.log("👑 Admin logged in");
 
       return res
         .status(200)
@@ -169,17 +175,18 @@ export const Login = async (req, res) => {
         .json({
           success: true,
           message: "Admin login successful",
-          token, // ✅ explicitly send token
+          token,
           user: {
             id: "admin-id",
-            email: ADMIN_EMAIL,
+            email: process.env.ADMIN_EMAIL,
             role: "Admin",
           },
         });
     }
 
-    // ✅ USER LOGIN
+    /* ---------------- USER / MANAGER LOGIN ---------------- */
     const user = await User.findOne({ email, accountVerified: true });
+
     if (!user) {
       return res.status(400).json({
         success: false,
@@ -188,6 +195,7 @@ export const Login = async (req, res) => {
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password);
+
     if (!passwordMatch) {
       return res.status(400).json({
         success: false,
@@ -195,14 +203,41 @@ export const Login = async (req, res) => {
       });
     }
 
-    // ✅ Uses same JWT_SECRET_KEY internally
-    sendToken(user, 200, "User login successful", res);
+    console.log("👤 Logged in user role:", user.role);
+
+    // ✅ Normalize role (IMPORTANT FIX)
+    const role =
+      user.role.charAt(0).toUpperCase() + user.role.slice(1).toLowerCase();
+
+    const token = jwt.sign(
+      { id: user._id, role },
+      process.env.JWT_SECRET_KEY,
+      { expiresIn: process.env.JWT_EXPIRE }
+    );
+
+    return res
+      .status(200)
+      .cookie("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+        maxAge: process.env.COOKIE_EXPIRE * 24 * 60 * 60 * 1000,
+      })
+      .json({
+        success: true,
+        message: "Login successful",
+        token,
+        user: {
+          id: user._id,
+          email: user.email,
+          role: role, // ✅ FIXED ROLE
+        },
+      });
   } catch (error) {
     console.error("💥 Login error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to login",
-      error: error.message,
     });
   }
 };
