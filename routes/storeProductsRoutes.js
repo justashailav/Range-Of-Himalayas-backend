@@ -17,7 +17,7 @@ import {
 
 const router = express.Router();
 
-router.use("/manager", isAuthenticated, attachStore);
+router.use("/manager", isAuthenticated, isAuthorized("Manager"), attachStore);
 
 router.post("/manager/add", addStoreProduct);
 router.get("/manager/products", getStoreProducts);
