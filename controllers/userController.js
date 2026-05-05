@@ -140,8 +140,6 @@ export const Login = async (req, res) => {
         message: "All fields required",
       });
     }
-
-    // ✅ ADMIN LOGIN
     if (email === ADMIN_EMAIL) {
       const isPasswordMatch = await bcrypt.compare(password, ADMIN_PASSWORD);
       if (!isPasswordMatch) {
@@ -150,11 +148,9 @@ export const Login = async (req, res) => {
           message: "Invalid admin credentials",
         });
       }
-
-      // 🔑 Admin token uses same secret as users for consistency
       const token = jwt.sign(
         { id: "admin-id", role: "Admin" },
-        process.env.JWT_SECRET_KEY, // ✅ unified key
+        process.env.JWT_SECRET_KEY, 
         { expiresIn: process.env.JWT_EXPIRE }
       );
 
@@ -169,7 +165,7 @@ export const Login = async (req, res) => {
         .json({
           success: true,
           message: "Admin login successful",
-          token, // ✅ explicitly send token
+          token, 
           user: {
             id: "admin-id",
             email: ADMIN_EMAIL,
@@ -177,8 +173,6 @@ export const Login = async (req, res) => {
           },
         });
     }
-
-    // ✅ USER LOGIN
     const user = await User.findOne({ email, accountVerified: true });
     if (!user) {
       return res.status(400).json({
@@ -194,11 +188,9 @@ export const Login = async (req, res) => {
         message: "Invalid email or password",
       });
     }
-
-    // ✅ Uses same JWT_SECRET_KEY internally
     sendToken(user, 200, "User login successful", res);
   } catch (error) {
-    console.error("💥 Login error:", error);
+    console.error("Login error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to login",

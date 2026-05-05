@@ -120,13 +120,18 @@ export const createOrder = async (req, res) => {
       totalAmount,
       cartId,
       code,
-
     } = req.body;
 
-    if (!userId || (!cartItems.length && !boxes.length)) {
+    if (!cartItems.length && !boxes.length) {
       return res.status(400).json({
         success: false,
         message: "Cart is empty.",
+      });
+    }
+    if (!userId && !addressInfo?.phone) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number required for guest checkout",
       });
     }
 
@@ -137,12 +142,17 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found.",
-      });
+    let user = null;
+
+    if (userId) {
+      user = await User.findById(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found.",
+        });
+      }
     }
 
     // ✅ STOCK VALIDATION
@@ -387,14 +397,24 @@ export const capturePayment = async (req, res) => {
     await updateBatchStock(order.cartItems);
 
     if (order.code) {
-      const couponDoc = await Coupon.findById(order.code);
-      if (couponDoc) await updateCouponUsage(couponDoc.code, order.userId);
-    }
+  const couponDoc = await Coupon.findById(order.code);
 
-    await Cart.findOneAndUpdate(
-      { userId: order.userId },
-      { items: [], boxes: [] },
-    );
+  if (couponDoc) {
+    if (order.userId) {
+      await updateCouponUsage(couponDoc.code, order.userId);
+    } else if (order.addressInfo?.phone) {
+      // 👇 track guest usage via phone
+      await updateCouponUsage(couponDoc.code, order.addressInfo.phone);
+    }
+  }
+}
+
+    if (order.userId) {
+      await Cart.findOneAndUpdate(
+        { userId: order.userId },
+        { items: [], boxes: [] },
+      );
+    }
     await order.save();
     console.log("✅ Database record finalized");
     const triggerCourier = async (orderId) => {
@@ -472,49 +492,48 @@ export const capturePayment = async (req, res) => {
     triggerEmail();
 
     const triggerWhatsApp = async () => {
-  try {
-    const phone = order?.addressInfo?.phone;
-    if (!phone) {
-      console.log("⚠️ No phone number, skipping WhatsApp");
-      return;
-    }
+      try {
+        const phone = order?.addressInfo?.phone;
+        if (!phone) {
+          console.log("⚠️ No phone number, skipping WhatsApp");
+          return;
+        }
 
-    // ✨ PREMIUM ORDER CONFIRMATION
-    let message = `🏔️ *Order Confirmed!* \n`;
-    message += `_Thank you for choosing Range of Himalayas._\n\n`;
+        // ✨ PREMIUM ORDER CONFIRMATION
+        let message = `🏔️ *Order Confirmed!* \n`;
+        message += `_Thank you for choosing Range of Himalayas._\n\n`;
 
-    message += `*ORDER DETAILS*\n`;
-    message += `🆔 ID: #${order._id.toString().slice(-6).toUpperCase()}\n`;
-    message += `💰 Total: ₹${order.totalAmount}\n`;
+        message += `*ORDER DETAILS*\n`;
+        message += `🆔 ID: #${order._id.toString().slice(-6).toUpperCase()}\n`;
+        message += `💰 Total: ₹${order.totalAmount}\n`;
 
-    // 💳 PAYMENT STRUCTURE (Refined for Clarity)
-    if (order.paymentMethod === "cod") {
-      message += `\n*PAYMENT SUMMARY (COD)*\n`;
-      message += `✅ Advance Paid: ₹${order.codAdvanceAmount || 200}\n`;
-      message += `⏳ Balance to Pay: *₹${order.codRemainingAmount || 0}*\n`;
-    } else {
-      message += `\n✅ *Payment Status:* Full Payment Received\n`;
-    }
+        // 💳 PAYMENT STRUCTURE (Refined for Clarity)
+        if (order.paymentMethod === "cod") {
+          message += `\n*PAYMENT SUMMARY (COD)*\n`;
+          message += `✅ Advance Paid: ₹${order.codAdvanceAmount || 200}\n`;
+          message += `⏳ Balance to Pay: *₹${order.codRemainingAmount || 0}*\n`;
+        } else {
+          message += `\n✅ *Payment Status:* Full Payment Received\n`;
+        }
 
-    // 📦 SHIPPING INFO
-    message += `\n*WHAT NEXT?*\n`;
-    message += `Our team is currently hand-picking your items. You will receive another update once your package leaves our Himalayan warehouse. 📦\n\n`;
+        // 📦 SHIPPING INFO
+        message += `\n*WHAT NEXT?*\n`;
+        message += `Our team is currently hand-picking your items. You will receive another update once your package leaves our Himalayan warehouse. 📦\n\n`;
 
-    // 📍 QUICK LINKS
-    message += `📍 *Track Your Journey:* \nhttps://www.rangeofhimalayas.co.in/account/orders\n\n`;
+        // 📍 QUICK LINKS
+        message += `📍 *Track Your Journey:* \nhttps://www.rangeofhimalayas.co.in/account/orders\n\n`;
 
-    // 📞 CONCIERGE SUPPORT
-    message += `_Need assistance? Reply to this message or call our concierge at +91 62308 67344._\n\n`;
-    
-    message += `🌿 *Pure. Organic. Himalayan.*`;
+        // 📞 CONCIERGE SUPPORT
+        message += `_Need assistance? Reply to this message or call our concierge at +91 62308 67344._\n\n`;
 
-    await sendWhatsApp(phone, message);
-    console.log("✅ Premium WhatsApp sent successfully");
+        message += `🌿 *Pure. Organic. Himalayan.*`;
 
-  } catch (err) {
-    console.error("❌ WhatsApp error (non-blocking):", err.message);
-  }
-};
+        await sendWhatsApp(phone, message);
+        console.log("✅ Premium WhatsApp sent successfully");
+      } catch (err) {
+        console.error("❌ WhatsApp error (non-blocking):", err.message);
+      }
+    };
 
     // Run in background (NON-BLOCKING)
     triggerWhatsApp();
@@ -913,7 +932,6 @@ export const updateOrderStatus = async (req, res) => {
       }
     }
 
-
     const phone = order?.addressInfo?.phone;
     if (phone) {
       const triggerWhatsAppUpdate = async () => {
@@ -926,23 +944,28 @@ export const updateOrderStatus = async (req, res) => {
           switch (order.orderStatus.toLowerCase()) {
             case "packed":
               statusEmoji = "🎁";
-              subMessage = "Your items have been carefully packed and are ready for the journey.";
+              subMessage =
+                "Your items have been carefully packed and are ready for the journey.";
               break;
             case "shipped":
               statusEmoji = "🚚";
-              subMessage = "Your package has left our Himalayan warehouse. It's on its way to you!";
+              subMessage =
+                "Your package has left our Himalayan warehouse. It's on its way to you!";
               break;
             case "out_for_delivery":
               statusEmoji = "🚀";
-              subMessage = "The wait is almost over! Our delivery partner is nearby.";
+              subMessage =
+                "The wait is almost over! Our delivery partner is nearby.";
               break;
             case "delivered":
               statusEmoji = "🏡";
-              subMessage = "Successfully delivered. We hope you enjoy your Himalayan treasures!";
+              subMessage =
+                "Successfully delivered. We hope you enjoy your Himalayan treasures!";
               break;
             case "cancelled":
               statusEmoji = "❌";
-              subMessage = "Your order has been cancelled. Contact support for any queries.";
+              subMessage =
+                "Your order has been cancelled. Contact support for any queries.";
               break;
           }
 

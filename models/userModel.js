@@ -61,7 +61,6 @@ userSchema.methods.generateVerificatinCode = function () {
   return verificationCode;
 };
 userSchema.methods.generateToken = function () {
-  console.log("JWT_SECRET_KEY:", process.env.JWT_SECRET_KEY);
   return jwt.sign({ id: this._id }, process.env.JWT_SECRET_KEY, {
     expiresIn: process.env.JWT_EXPIRE,
   });

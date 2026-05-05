@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-
 const orderSchema = new mongoose.Schema(
   {
     userId: {
@@ -88,27 +87,23 @@ const orderSchema = new mongoose.Schema(
     ],
 
     addressInfo: {
-  addressId: String,
-  address: String,
-  city: String,
-  pincode: String,
-  phone: String,
-  notes: String,
-
-  // 🔥 ADD THIS
-  location: {
-    type: {
-      type: String,
-      default: "Point"
+      addressId: String,
+      address: String,
+      city: String,
+      pincode: String,
+      phone: String,
+      notes: String,
+      location: {
+        type: {
+          type: String,
+          default: "Point",
+        },
+        coordinates: {
+          type: [Number],
+          default: [0, 0],
+        },
+      },
     },
-    coordinates: {
-      type: [Number], // [lng, lat]
-      default: [0, 0]
-    }
-  }
-},
-
-    /* ✅ PAYMENT */
     paymentMethod: {
       type: String,
       enum: ["razorpay", "cod"],
@@ -139,7 +134,6 @@ const orderSchema = new mongoose.Schema(
       type: String,
     },
 
-    /* ✅ COD Fields */
     codAdvanceAmount: {
       type: Number,
       default: 0,
@@ -159,8 +153,6 @@ const orderSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Coupon",
     },
-
-    /* ✅ ORDER STATUS */
     orderStatus: {
       type: String,
       enum: [
@@ -204,8 +196,6 @@ const orderSchema = new mongoose.Schema(
         },
       },
     ],
-
-    /* ✅ CANCELLATION */
     cancelStatus: {
       type: String,
       enum: ["none", "requested", "cancelled"],

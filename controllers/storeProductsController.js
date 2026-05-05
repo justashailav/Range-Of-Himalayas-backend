@@ -5,12 +5,11 @@ import { StoreProduct } from "../models/storeProductsModel.js";
 /* ---------------- HELPER ---------------- */
 const getStoreId = (req) => {
   if (req.user.role === "Admin") {
-    return req.query.storeId; // admin only reads
+    return req.query.storeId; 
   }
   return req.storeId; // manager
 };
 
-/* ---------------- ADD PRODUCT (MANAGER ONLY) ---------------- */
 export const addStoreProduct = async (req, res) => {
   try {
     if (req.user.role !== "Manager") {
@@ -193,7 +192,6 @@ export const sellStoreProduct = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
-
 /* ---------------- RESTOCK (MANAGER ONLY) ---------------- */
 export const restockProduct = async (req, res) => {
   try {

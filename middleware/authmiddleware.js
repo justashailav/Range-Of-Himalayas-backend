@@ -14,14 +14,14 @@ export const isAuthenticated = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET_KEY);
-    // Admin login (special static case)
+    
     if (decoded.id === "admin-id" || decoded.role === "Admin") {
       req.user = {
         id: "admin-id",
         role: "Admin",
         email: process.env.ADMIN_EMAIL,
       };
-      console.log("👑 Admin authenticated");
+      console.log("Admin authenticated");
       return next();
     }
 
@@ -61,12 +61,9 @@ export const isAuthorized = (...roles) => {
 
 export const attachStore = (req, res, next) => {
   try {
-    // 👑 Admin → can access everything
     if (req.user.role === "Admin") {
       return next();
     }
-
-    // 🏬 Manager → attach storeId
     if (req.user.role === "Manager") {
       if (!req.user.storeId) {
         return res.status(400).json({
@@ -78,9 +75,7 @@ export const attachStore = (req, res, next) => {
       req.storeId = req.user.storeId;
       return next();
     }
-
-    // 👤 Normal user → no store access
-    return res.status(403).json({
+    return res.status(403).json({ 
       success: false,
       message: "Only managers can access store data",
     });
