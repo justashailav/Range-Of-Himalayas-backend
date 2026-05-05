@@ -237,6 +237,7 @@ export const createOrder = async (req, res) => {
     console.error("🔥 Order creation error:", error);
     return res.status(500).json({
       success: false,
+      message: error.message,
     });
   }
 };
