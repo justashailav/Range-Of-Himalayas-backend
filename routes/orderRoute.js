@@ -20,7 +20,7 @@ import { isAuthenticated } from "../middleware/authmiddleware.js";
 
 const router = express.Router();
 router.get("/recent", getRecentOrders);
-router.post("/create", isAuthenticated, createOrder);
+router.post("/create", createOrder);
 router.post("/capture-payment", capturePayment);
 router.get("/getallorders", getAllOrdersOfAllUsers);
 router.get("/:id", getOrderById);
