@@ -14,27 +14,27 @@ import { createICCOrder, trackICCShipment } from "../utils/iccService.js";
 import { sendWhatsApp } from "../utils/whatsapp.js";
 import { Batch } from "../models/batchModel.js";
 
-const assignBatchToItems = async (items) => {
-  for (let item of items) {
-    // 🔥 Find batch for this product
-    const batch = await Batch.findOne({
-      productName: item.title, // ⚠️ IMPORTANT (match this properly)
-      remainingUnits: { $gt: 0 },
-    }).sort({ createdAt: 1 }); // FIFO
+// const assignBatchToItems = async (items) => {
+//   for (let item of items) {
+//     // 🔥 Find batch for this product
+//     const batch = await Batch.findOne({
+//       productName: item.title, // ⚠️ IMPORTANT (match this properly)
+//       remainingUnits: { $gt: 0 },
+//     }).sort({ createdAt: 1 }); // FIFO
 
-    if (!batch) {
-      throw new Error(`No batch available for ${item.title}`);
-    }
+//     if (!batch) {
+//       throw new Error(`No batch available for ${item.title}`);
+//     }
 
-    if (batch.remainingUnits < item.quantity) {
-      throw new Error(`Insufficient stock in batch ${batch.batchId}`);
-    }
+//     if (batch.remainingUnits < item.quantity) {
+//       throw new Error(`Insufficient stock in batch ${batch.batchId}`);
+//     }
 
-    item.batchId = batch.batchId;
-  }
+//     item.batchId = batch.batchId;
+//   }
 
-  return items;
-};
+//   return items;
+// };
 const adjustStock = async (cartItems, type = "deduct") => {
   const factor = type === "deduct" ? -1 : 1;
 
@@ -380,7 +380,7 @@ export const capturePayment = async (req, res) => {
 
     // Deduct stock, handle coupons, and clear cart
     await adjustStock(order.cartItems, "deduct");
-    order.cartItems = await assignBatchToItems(order.cartItems);
+    // order.cartItems = await assignBatchToItems(order.cartItems);
     // const updateBatchStock = async (items) => {
     //   for (let item of items) {
     //     if (!item.batchId) continue;
