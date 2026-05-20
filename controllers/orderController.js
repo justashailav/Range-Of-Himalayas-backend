@@ -381,21 +381,21 @@ export const capturePayment = async (req, res) => {
     // Deduct stock, handle coupons, and clear cart
     await adjustStock(order.cartItems, "deduct");
     order.cartItems = await assignBatchToItems(order.cartItems);
-    const updateBatchStock = async (items) => {
-      for (let item of items) {
-        if (!item.batchId) continue;
+    // const updateBatchStock = async (items) => {
+    //   for (let item of items) {
+    //     if (!item.batchId) continue;
 
-        const batch = await Batch.findOne({ batchId: item.batchId });
+    //     const batch = await Batch.findOne({ batchId: item.batchId });
 
-        batch.remainingUnits -= item.quantity;
+    //     batch.remainingUnits -= item.quantity;
 
-        await batch.save();
+    //     await batch.save();
 
-        console.log(`📉 Batch ${batch.batchId} updated`);
-      }
-    };
+    //     console.log(`📉 Batch ${batch.batchId} updated`);
+    //   }
+    // };
 
-    await updateBatchStock(order.cartItems);
+    // await updateBatchStock(order.cartItems);
 
     if (order.code) {
   const couponDoc = await Coupon.findById(order.code);
