@@ -119,6 +119,15 @@ const productsSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    benefits: {
+      type: [String],
+      default: [],
+    },
+
+    howToUse: {
+      type: [String],
+      default: [],
+    },
     isCombo: {
       type: Boolean,
       default: false,

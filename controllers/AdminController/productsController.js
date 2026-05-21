@@ -16,7 +16,8 @@ export const addProduct = async (req, res) => {
       customBoxPrices,
       isCombo,
       comboNutrition,
-      
+      benefits,
+      howToUse,
     } = req.body;
 
     const files = req.files || [];
@@ -77,7 +78,7 @@ export const addProduct = async (req, res) => {
       "10g (Himalayan Shilajit) 500ml (Sea Buckthorn Pulp)",
       "10g (Himalayan Shilajit) 200ml (Sea Buckthorn Pulp)",
       "20g (Himalayan Shilajit) 200ml (Sea Buckthorn Pulp)",
-      "20g (Himalayan Shilajit) 500ml (Sea Buckthorn Pulp)"
+      "20g (Himalayan Shilajit) 500ml (Sea Buckthorn Pulp)",
     ];
 
     const normalizedVariants = parsedVariants
@@ -153,10 +154,38 @@ export const addProduct = async (req, res) => {
       files.slice(1).map((f) => uploadMedia(f.path)),
     );
 
+    /* ------------------ BENEFITS ------------------ */
+let parsedBenefits = [];
+
+try {
+  parsedBenefits = benefits
+    ? typeof benefits === "string"
+      ? JSON.parse(benefits)
+      : benefits
+    : [];
+} catch {
+  parsedBenefits = [];
+}
+
+/* ------------------ HOW TO USE ------------------ */
+let parsedHowToUse = [];
+
+try {
+  parsedHowToUse = howToUse
+    ? typeof howToUse === "string"
+      ? JSON.parse(howToUse)
+      : howToUse
+    : [];
+} catch {
+  parsedHowToUse = [];
+}
+
     /* ------------------ SAVE ------------------ */
     const product = new Products({
       title,
       description,
+      benefits: parsedBenefits,
+  howToUse: parsedHowToUse,
       isCombo: isCombo === "true" || isCombo === true,
       nutrition: parsedNutrition,
       comboNutrition: parsedComboNutrition,
@@ -226,6 +255,8 @@ export const editProduct = async (req, res) => {
       stock,
       isCombo,
       comboNutrition,
+      benefits,
+  howToUse,
     } = req.body;
 
     // ---------------- FIND PRODUCT ----------------
@@ -257,6 +288,8 @@ export const editProduct = async (req, res) => {
     const parsedCustomBoxPrices = safeParse(customBoxPrices, []);
     const parsedBadges = safeParse(badges, []);
     const parsedComboNutrition = safeParse(comboNutrition, { items: [] });
+    const parsedBenefits = safeParse(benefits, []);
+const parsedHowToUse = safeParse(howToUse, []);
 
     // ---------------- IMAGE HANDLING ----------------
     const files = req.files || [];
@@ -327,6 +360,11 @@ export const editProduct = async (req, res) => {
       product.nutrition = parsedNutrition || {};
 
     if (parsedDetails !== undefined) product.details = parsedDetails || {};
+    if (parsedBenefits !== undefined)
+  product.benefits = parsedBenefits || [];
+
+if (parsedHowToUse !== undefined)
+  product.howToUse = parsedHowToUse || [];
 
     if (typeof rating !== "undefined") product.rating = Number(rating) || 0;
 
